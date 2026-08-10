@@ -19,3 +19,7 @@ class InvalidPositionError(ValueError):
 
 class InvalidScaleDegreeError(ValueError):
     """Raised for invalid scale degrees or malformed scale formulas."""
+
+
+class UnknownScaleFormulaError(ValueError):
+    """Raised when a named scale formula ID is not in the catalog."""

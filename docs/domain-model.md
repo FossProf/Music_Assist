@@ -118,8 +118,8 @@ MAJOR.chromatic_offsets  # (0, 2, 4, 5, 7, 9, 11) as ChromaticIntervals
 
 Because a formula stores degrees (not raw offsets), it can express spellings the
 degree value encodes: `#4` and `b5` may coexist in one formula, resolving to the
-same chromatic offset, without colliding. Named presets (major, natural minor,
-minor pentatonic) are intentionally not built in yet.
+same chromatic offset, without colliding. Named presets live in a separate
+catalog (see below); `ScaleFormula` itself has no names.
 
 ## Scale, ScaleTone
 
@@ -147,6 +147,31 @@ scale.pitch_classes  # (C, D, E, F, G, A, B)
   root; there is no dedicated transpose API yet.
 - Enharmonic spelling is out of scope: tones use the normalized `PitchClass`,
   and degree identity carries the theoretical distinction for now.
+
+## Named scale formulas
+
+Built-in, reusable `ScaleFormula` presets live in a theory-domain catalog,
+separate from scale mechanics: `Scale` and `ScaleFormula` know nothing about
+names such as "Major" or "Dorian".
+
+```python
+from guitar_app.core.theory.scale_formulas import MAJOR, IONIAN, SCALE_FORMULAS
+
+IONIAN.formula is MAJOR.formula  # same formula, different identity
+scale_formula_by_id("dorian")  # the Dorian entry
+[entry.id for entry in SCALE_FORMULAS]  # stable enumeration order
+```
+
+- `NamedScaleFormula(id, name, formula)` pairs a stable programmatic ID
+  (snake_case) with a human-readable display name and its `ScaleFormula`.
+- Catalog entries: Major, Natural Minor, Major Pentatonic, Minor Pentatonic,
+  and the seven modes (Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian,
+  Locrian). Ionian reuses the Major formula and Aeolian reuses Natural Minor,
+  so the same `ScaleFormula` instance backs both identities.
+- `scale_formula_by_id(id)` returns the matching entry and raises
+  `UnknownScaleFormulaError` for an unknown ID.
+- No aliases, fuzzy search, localization, user-defined catalogs, persistence,
+  or categories yet.
 
 ## GuitarString
 
@@ -219,6 +244,7 @@ hard to express.
 - `InvalidTuningError` — malformed tunings or string numbers.
 - `InvalidPositionError` — string/fret positions outside the fretboard.
 - `InvalidScaleDegreeError` — invalid scale degrees or malformed scale formulas.
+- `UnknownScaleFormulaError` — a named scale formula ID is not in the catalog.
 
 These are domain errors raised by the core engines; the application layer is
 responsible for turning them into user-facing messages.
