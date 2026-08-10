@@ -73,6 +73,54 @@ spellings — diminished fifth vs augmented fourth, augmented fifth vs minor
 sixth, diminished seventh, compound intervals, and so on. That is intentionally
 not modeled yet.
 
+## ScaleDegree
+
+A diatonic scale degree: a position in the major-scale (diatonic) sequence plus
+an accidental alteration. `number` is always 1..7; `alteration` is the semitone
+deviation from the natural degree, bounded to -2..+2.
+
+```python
+ScaleDegree(1)  # 1  — tonic
+ScaleDegree(3, -1)  # b3
+ScaleDegree(4, 1)  # #4
+ScaleDegree(7, -2)  # bb7
+ScaleDegree(5, 2)  # ##5
+```
+
+- Natural-degree offsets follow the major scale: 1→0, 2→2, 3→4, 4→5, 5→7,
+  6→9, 7→11. `chromatic_offset` is that offset plus the alteration, modulo 12.
+- **A degree preserves its identity independently of the chromatic pitch it
+  resolves to.** `#4` (`ScaleDegree(4, 1)`) and `b5` (`ScaleDegree(5, -1)`) are
+  distinct values even though both have chromatic offset 6. The degree is not
+  reducible to a `ChromaticInterval`.
+- Out-of-range numbers or alterations raise `InvalidScaleDegreeError`.
+
+## ScaleFormula
+
+An immutable, ordered collection of `ScaleDegree` values, tonic first. It holds
+at least one degree, rejects duplicate identical degrees, and supports sequence
+access (indexing, slicing, iteration, `len`).
+
+```python
+MAJOR = ScaleFormula(
+    (
+        ScaleDegree(1),
+        ScaleDegree(2),
+        ScaleDegree(3),
+        ScaleDegree(4),
+        ScaleDegree(5),
+        ScaleDegree(6),
+        ScaleDegree(7),
+    )
+)
+MAJOR.chromatic_offsets  # (0, 2, 4, 5, 7, 9, 11) as ChromaticIntervals
+```
+
+Because a formula stores degrees (not raw offsets), it can express spellings the
+degree value encodes: `#4` and `b5` may coexist in one formula, resolving to the
+same chromatic offset, without colliding. Named presets (major, natural minor,
+minor pentatonic) are intentionally not built in yet.
+
 ## GuitarString
 
 A single string identified by its conventional number (1 = highest/thinnest,
@@ -129,7 +177,7 @@ list(board.positions(root=PitchClass.C))  # every position + displacement from C
 
 The same style of typed value object will be used for:
 
-- `ScaleFormula` / `Scale` (interval patterns and their root spellings)
+- `Scale` (a `ScaleFormula` plus a root pitch)
 - `ChordQuality` / `Chord` / `Triad`
 - `Key`
 - `Layer` / layer annotations (see `docs/architecture.md`)
@@ -144,6 +192,7 @@ hard to express.
 - `InvalidPitchError` — unparseable note names, invalid pitch construction.
 - `InvalidTuningError` — malformed tunings or string numbers.
 - `InvalidPositionError` — string/fret positions outside the fretboard.
+- `InvalidScaleDegreeError` — invalid scale degrees or malformed scale formulas.
 
 These are domain errors raised by the core engines; the application layer is
 responsible for turning them into user-facing messages.

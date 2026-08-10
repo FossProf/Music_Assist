@@ -15,3 +15,7 @@ class InvalidTuningError(ValueError):
 
 class InvalidPositionError(ValueError):
     """Raised when a string/fret position does not exist on a fretboard."""
+
+
+class InvalidScaleDegreeError(ValueError):
+    """Raised for invalid scale degrees or malformed scale formulas."""
