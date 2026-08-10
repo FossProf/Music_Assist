@@ -249,13 +249,26 @@ map_scale_to_fretboard(board, Scale(PitchClass.C, MAJOR.formula))
   lowest fret first), then formula/tone order for multiple matches at one
   position.
 
+## Layer results
+
+Fretboard overlays are implemented as layers in `core.layers` (see
+`docs/architecture.md`). A layer has a stable `id`, a human-readable `name`,
+and an `evaluate` operation returning an immutable `LayerResult` — layer
+metadata plus a tuple of layer-specific annotations. Every annotation
+identifies its fretboard location via a `FretPosition`; results never contain
+rendering fields such as color, shape, opacity, font, or pixel coordinates.
+
+`ScaleLayer` (`id="scale"`, `name="Scale"`) is the first concrete layer. It is
+stateless: the fretboard and scale are supplied at evaluation time, and its
+result preserves the `ScaleFretboardPosition` data by delegating to
+`map_scale_to_fretboard`.
+
 ## Planned concepts
 
 The same style of typed value object will be used for:
 
 - `ChordQuality` / `Chord` / `Triad`
 - `Key`
-- `Layer` / layer annotations (see `docs/architecture.md`)
 - `Progression`
 
 When a concept would otherwise be a raw string in the API (e.g. `"dorian"` or

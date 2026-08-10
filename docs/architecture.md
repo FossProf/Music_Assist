@@ -76,6 +76,20 @@ This module answers *musical* questions ("which positions sound C? what interval
 is this position from the root? which positions belong to this scale?") and
 never rendering questions ("which color should this position be?").
 
+### core.layers — fretboard overlay layers
+
+- `Layer` (Protocol) — the minimal structural contract for an overlay: a stable
+  `id`, a human-readable `name`, and an `evaluate` operation returning an
+  immutable `LayerResult`.
+- `LayerResult[T]` — layer metadata plus a tuple of layer-specific annotations.
+  Every annotation identifies its fretboard location via `FretPosition`
+  (`FretboardAnnotation`). There are no universal context or rendering fields.
+- `ScaleLayer` (`id="scale"`, `name="Scale"`) — the first concrete layer; it
+  delegates to `map_scale_to_fretboard`.
+
+Each concrete layer owns the inputs it requires (no universal `LayerContext`).
+Layers produce structured annotations only; rendering is always the UI's job.
+
 ### cli (temporary)
 
 A development-only command-line harness that prints the fretboard and its
@@ -84,10 +98,10 @@ by the PySide6 application.
 
 ### Planned subsystems
 
-- **core.layers** — a `Layer` abstraction: a layer evaluates a musical context
-  and produces structured annotations attached to fretboard positions. Layers
-  never touch UI components. The first layers (notes, intervals, scale, chord
-  tones) will be added incrementally.
+- **core.layers** — the fretboard layer contract (`Layer`, `LayerResult`,
+  `FretboardAnnotation`) and concrete layers. `ScaleLayer` is implemented;
+  interval, chord-tone, and audio layers will be added incrementally. Layers
+  never touch UI components.
 - **core.progression** — progressions and voice-leading analysis (later).
 - **core.audio** — pitch/onset detection, tuning, and note tracking (later).
   Must remain independent of the theory engine and the UI; DSP code may use
@@ -106,7 +120,7 @@ by the PySide6 application.
 | GuitarString, Tuning   | core.instrument      | core.theory             |
 | Fretboard, positions   | core.fretboard       | core.theory, core.instrument |
 | Scale↔fretboard mapping| core.fretboard       | core.theory, core.instrument |
-| Layers (planned)       | core.layers          | theory, instrument, fretboard |
+| Layers                 | core.layers          | theory, instrument, fretboard |
 | Progression (planned)  | core.progression     | theory, fretboard       |
 | Audio (planned)        | core.audio           | core.theory (for pitch names) |
 | UI (planned)           | ui                   | everything above, via services |
@@ -124,29 +138,34 @@ Hard rules:
 The central product concept: **the fretboard is the workspace; musical concepts
 are toggleable layers projected onto it.**
 
-Planned shape (not yet implemented):
+Implemented contract (`core.layers`):
 
 ```
-class Layer(Protocol):
+class Layer(Protocol[T]):
+    id: str
     name: str
-    def evaluate(self, context: LayerContext) -> LayerResult:
-        """Map a musical context to structured annotations per position."""
+    def evaluate(self, *args: Any, **kwargs: Any) -> LayerResult[T]: ...
 ```
 
-- A `LayerContext` carries whatever the layer needs: a fretboard, a root, a
-  scale, a chord, etc.
-- A `LayerResult` is a set of structured annotations — for example
-  `(position, interval, scale_degree, chord_function, member_of_...?)` — never
-  colors or shapes.
-- The UI takes a `LayerResult` and decides how to draw it. This keeps every
-  layer individually testable without a GUI and lets several layers be combined
-  on one fretboard.
+- A layer exposes a stable `id`, a human-readable `name`, and an `evaluate`
+  operation that returns an immutable `LayerResult`. Each concrete layer
+  declares its own `evaluate` signature and owns the inputs it actually
+  requires — there is **no universal `LayerContext`** and no inherited state
+  from other layers.
+- `LayerResult[T]` is layer metadata (`layer_id`, `layer_name`) plus a tuple of
+  layer-specific annotations. Every annotation identifies its fretboard
+  location via a `FretPosition` (`FretboardAnnotation`).
+- Results are structured domain data — never colors, shapes, opacity, fonts, or
+  pixel coordinates. The UI consumes a `LayerResult` and owns all rendering.
+  This keeps every layer individually testable without a GUI and lets several
+  layers be combined on one fretboard.
+- First concrete layer: `ScaleLayer` (`id="scale"`, `name="Scale"`), which
+  delegates to `map_scale_to_fretboard`.
 
 Example: an *IntervalLayer* evaluated with root A returns, for every position,
 the chromatic displacement from A. A *ChordToneLayer* for Am returns which
 positions belong to the Am triad. Both can be displayed at once, and re-rooting
-to G updates both automatically because each layer computes from the same
-shared context.
+to G updates both automatically.
 
 ## Major architectural decisions
 
