@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Generic, ParamSpec, Protocol, TypeVar
 
 from guitar_app.core.fretboard.fretboard import FretPosition
 
@@ -21,6 +21,7 @@ class FretboardAnnotation(Protocol):
 
 
 T = TypeVar("T", bound=FretboardAnnotation)
+P = ParamSpec("P")
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,19 +38,25 @@ class LayerResult(Generic[T]):
     annotations: tuple[T, ...]
 
 
-class Layer(Protocol[T]):
+class Layer(Protocol[P, T]):
     """Structural contract for fretboard overlay layers.
 
     A layer has a stable ``id``, a human-readable ``name``, and evaluates to an
     immutable :class:`LayerResult`. There is no universal evaluation context:
     each concrete layer declares the inputs it actually requires (for example
-    ``ScaleLayer.evaluate(fretboard, scale)``). The abstraction is intentionally
-    minimal so future interval, chord, triad, or audio layers can implement it
-    without inheriting irrelevant state. Layers compute structured annotations
-    only; they never render.
+    ``ScaleLayer.evaluate(fretboard, scale)``). The ``P`` parameter preserves
+    each layer's heterogeneous ``evaluate`` signature statically, so calls are
+    fully type-checked. The abstraction is intentionally minimal so future
+    interval, chord, triad, or audio layers can implement it without inheriting
+    irrelevant state. Layers compute structured annotations only; they never
+    render.
     """
 
     id: str
     name: str
 
-    def evaluate(self, *args: Any, **kwargs: Any) -> LayerResult[T]: ...
+    def evaluate(
+        self,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> LayerResult[T]: ...

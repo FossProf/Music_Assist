@@ -141,17 +141,21 @@ are toggleable layers projected onto it.**
 Implemented contract (`core.layers`):
 
 ```
-class Layer(Protocol[T]):
+P = ParamSpec("P")
+T = TypeVar("T", bound=FretboardAnnotation)
+
+class Layer(Protocol[P, T]):
     id: str
     name: str
-    def evaluate(self, *args: Any, **kwargs: Any) -> LayerResult[T]: ...
+    def evaluate(self, *args: P.args, **kwargs: P.kwargs) -> LayerResult[T]: ...
 ```
 
 - A layer exposes a stable `id`, a human-readable `name`, and an `evaluate`
   operation that returns an immutable `LayerResult`. Each concrete layer
   declares its own `evaluate` signature and owns the inputs it actually
   requires — there is **no universal `LayerContext`** and no inherited state
-  from other layers.
+  from other layers. The `ParamSpec` `P` keeps those heterogeneous signatures
+  statically type-checked instead of collapsing them to `Any`.
 - `LayerResult[T]` is layer metadata (`layer_id`, `layer_name`) plus a tuple of
   layer-specific annotations. Every annotation identifies its fretboard
   location via a `FretPosition` (`FretboardAnnotation`).

@@ -1,7 +1,10 @@
 """Tests for the fretboard layer contract and ScaleLayer."""
 
+from __future__ import annotations
+
 import dataclasses
 from dataclasses import FrozenInstanceError
+from typing import ParamSpec
 
 import pytest
 
@@ -25,13 +28,31 @@ BOARD = Fretboard(STANDARD, 12)
 LAYER = ScaleLayer()
 A_MINOR_PENTATONIC = Scale(PitchClass.A, MINOR_PENTATONIC.formula)
 
+P = ParamSpec("P")
+
+
+def _evaluate_layer(
+    layer: Layer[P, ScaleFretboardPosition],
+    *args: P.args,
+    **kwargs: P.kwargs,
+) -> LayerResult[ScaleFretboardPosition]:
+    return layer.evaluate(*args, **kwargs)
+
 
 class TestLayerProtocol:
     def test_scale_layer_satisfies_the_layer_protocol(self) -> None:
-        layer: Layer[ScaleFretboardPosition] = LAYER
-        assert layer.id == "scale"
-        assert layer.name == "Scale"
-        assert callable(layer.evaluate)
+        # mypy infers P from the concrete call and verifies that ScaleLayer
+        # conforms to Layer[P, ScaleFretboardPosition], preserving the
+        # (Fretboard, Scale) argument types as well as the result type.
+        result = _evaluate_layer(LAYER, BOARD, A_MINOR_PENTATONIC)
+        assert isinstance(result, LayerResult)
+        assert result.layer_id == "scale"
+        assert result.layer_name == "Scale"
+
+    def test_scale_layer_exposes_required_members(self) -> None:
+        assert LAYER.id == "scale"
+        assert LAYER.name == "Scale"
+        assert callable(LAYER.evaluate)
 
     def test_evaluation_returns_the_common_result_type(self) -> None:
         result = LAYER.evaluate(BOARD, A_MINOR_PENTATONIC)
