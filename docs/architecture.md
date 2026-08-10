@@ -26,14 +26,27 @@ or audio devices.
 
 ### core.theory — music theory primitives
 
-- `PitchClass` — normalized pitch classes (0–11), the canonical internal
-  representation for all pitch-class math.
+- `PitchClass` — a normalized chromatic identity (0–11), the canonical internal
+  representation for all pitch-class math. It does not by itself choose an
+  enharmonic spelling.
 - `Pitch` — a pitch class plus a scientific-pitch octave. The `midi` property
   uses the standard convention (`middle C == Pitch(C, 4).midi == 60`) so that
   the standard guitar's low E is `Pitch(E, 2)`.
-- `Interval` — named intervals (unison through octave) as semitone values.
+- `ChromaticInterval` — modulo-12 pitch-class displacement (0..11) used for
+  root-relative fretboard analysis. It encodes distance only, not theoretical
+  interval identity; member names are conventional labels for readability.
+- A theoretical `Interval` type that distinguishes enharmonic spellings
+  (diminished fifth vs augmented fourth, compound intervals, ...) is planned
+  but intentionally not implemented yet.
 
 No guitar or tuning concepts appear here.
+
+**Enharmonic spelling is a theory concern.** `PitchClass` is normalized for
+chromatic calculation, but choosing how a note is spelled (`F` vs `E#`, `Gb`
+vs `F#`) can carry harmonic or scale-degree meaning and therefore belongs to
+the theory/domain layer. The UI may choose how a spelling is presented
+visually, but it must not invent theoretical spelling on its own. A
+note-spelling engine is future work.
 
 ### core.instrument — instrument modeling
 
@@ -84,7 +97,7 @@ by the PySide6 application.
 | Concept                | Lives in             | Knows about             |
 | ---------------------- | -------------------- | ----------------------- |
 | Pitch, PitchClass      | core.theory          | nothing guitar-specific |
-| Interval               | core.theory          | nothing guitar-specific |
+| ChromaticInterval      | core.theory          | nothing guitar-specific |
 | GuitarString, Tuning   | core.instrument      | core.theory             |
 | Fretboard, positions   | core.fretboard       | core.theory, core.instrument |
 | Layers (planned)       | core.layers          | theory, instrument, fretboard |
@@ -124,9 +137,10 @@ class Layer(Protocol):
   on one fretboard.
 
 Example: an *IntervalLayer* evaluated with root A returns, for every position,
-the interval from A. A *ChordToneLayer* for Am returns which positions belong to
-the Am triad. Both can be displayed at once, and re-rooting to G updates both
-automatically because each layer computes from the same shared context.
+the chromatic displacement from A. A *ChordToneLayer* for Am returns which
+positions belong to the Am triad. Both can be displayed at once, and re-rooting
+to G updates both automatically because each layer computes from the same
+shared context.
 
 ## Major architectural decisions
 

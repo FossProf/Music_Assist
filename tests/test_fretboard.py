@@ -6,7 +6,7 @@ from guitar_app.core.errors import InvalidPositionError
 from guitar_app.core.fretboard.fretboard import Fretboard, FretPosition
 from guitar_app.core.instrument.guitar_string import GuitarString
 from guitar_app.core.instrument.tuning import STANDARD, Tuning
-from guitar_app.core.theory.interval import Interval
+from guitar_app.core.theory.chromatic_interval import ChromaticInterval
 from guitar_app.core.theory.pitch import Pitch, PitchClass
 
 BOARD = Fretboard(STANDARD, 12)
@@ -106,27 +106,31 @@ class TestPositionsIteration:
         assert position.interval_from_root is None
 
 
-class TestIntervalsFromRoot:
+class TestChromaticDisplacementsFromRoot:
     def test_a_string_open_is_root_of_a(self) -> None:
         position = BOARD.position_at(5, 0, root=PitchClass.A)
-        assert position.interval_from_root == Interval.UNISON
+        assert position.interval_from_root == ChromaticInterval.UNISON
+
+    def test_interval_from_root_uses_chromatic_distance_type(self) -> None:
+        position = BOARD.position_at(5, 0, root=PitchClass.A)
+        assert isinstance(position.interval_from_root, ChromaticInterval)
 
     def test_low_e_is_fifth_of_a(self) -> None:
         assert BOARD.position_at(6, 0, root=PitchClass.A).interval_from_root == (
-            Interval.PERFECT_FIFTH
+            ChromaticInterval.PERFECT_FIFTH
         )
         assert BOARD.position_at(6, 12, root=PitchClass.A).interval_from_root == (
-            Interval.PERFECT_FIFTH
+            ChromaticInterval.PERFECT_FIFTH
         )
 
     def test_c_is_minor_third_of_a(self) -> None:
         assert BOARD.position_at(5, 3, root=PitchClass.A).interval_from_root == (
-            Interval.MINOR_THIRD
+            ChromaticInterval.MINOR_THIRD
         )
 
     def test_b_is_major_second_of_a(self) -> None:
         assert BOARD.position_at(5, 2, root=PitchClass.A).interval_from_root == (
-            Interval.MAJOR_SECOND
+            ChromaticInterval.MAJOR_SECOND
         )
 
     def test_relative_to_c_matches_major_scale(self) -> None:
@@ -138,19 +142,19 @@ class TestIntervalsFromRoot:
         positions = {p.fret: p for p in board.positions(root=PitchClass.C)}
         for fret, interval in enumerate(
             [
-                Interval.UNISON,  # C
-                Interval.MINOR_SECOND,  # Db
-                Interval.MAJOR_SECOND,  # D
-                Interval.MINOR_THIRD,  # Eb
-                Interval.MAJOR_THIRD,  # E
-                Interval.PERFECT_FOURTH,  # F
-                Interval.TRITONE,  # Gb
-                Interval.PERFECT_FIFTH,  # G
-                Interval.MINOR_SIXTH,  # Ab
-                Interval.MAJOR_SIXTH,  # A
-                Interval.MINOR_SEVENTH,  # Bb
-                Interval.MAJOR_SEVENTH,  # B
-                Interval.UNISON,  # C
+                ChromaticInterval.UNISON,  # R
+                ChromaticInterval.MINOR_SECOND,  # b2
+                ChromaticInterval.MAJOR_SECOND,  # 2
+                ChromaticInterval.MINOR_THIRD,  # b3
+                ChromaticInterval.MAJOR_THIRD,  # 3
+                ChromaticInterval.PERFECT_FOURTH,  # 4
+                ChromaticInterval.TRITONE,  # b5
+                ChromaticInterval.PERFECT_FIFTH,  # 5
+                ChromaticInterval.MINOR_SIXTH,  # b6
+                ChromaticInterval.MAJOR_SIXTH,  # 6
+                ChromaticInterval.MINOR_SEVENTH,  # b7
+                ChromaticInterval.MAJOR_SEVENTH,  # 7
+                ChromaticInterval.UNISON,  # R
             ]
         ):
             assert positions[fret].interval_from_root == interval

@@ -46,11 +46,13 @@ _SPELLINGS: dict[int, str] = {
 
 
 class PitchClass(IntEnum):
-    """A pitch class, internally normalized to a 0..11 semitone offset from C.
+    """A pitch class: a normalized chromatic identity.
 
-    Enharmonically equivalent spellings (e.g. ``C#`` and ``Db``) map to the
-    same member. The enum value is the pitch-class number; this is the
-    normalized representation used for all internal calculations.
+    The enum value is the pitch-class number (0..11 semitones above C), used as
+    the canonical internal representation for all pitch-class math. It
+    identifies which of the twelve chromatic pitch classes a note is, but does
+    not by itself choose an enharmonic spelling (``F`` vs ``E#``); choosing a
+    context-aware spelling is a music-theory concern, not a rendering concern.
     """
 
     C = 0

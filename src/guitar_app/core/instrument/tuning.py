@@ -25,22 +25,25 @@ def _standard_strings() -> tuple[GuitarString, ...]:
 class Tuning:
     """An immutable collection of guitar strings for one instrument setup.
 
-    Strings are stored in the order they were given; for the standard preset
-    this is low to high (string 6 down to string 1). String numbers must be
-    unique and positive.
+    A valid tuning must contain exactly the string numbers ``1..N`` where ``N``
+    is the number of strings. The stored tuple order is not required to be
+    ascending: guitar display order may intentionally remain low to high (e.g.
+    ``6, 5, 4, 3, 2, 1``), but the set of string numbers must equal
+    ``set(range(1, N + 1))``.
     """
 
     name: str
     strings: tuple[GuitarString, ...]
 
     def __post_init__(self) -> None:
-        if not self.strings:
+        count = len(self.strings)
+        if count == 0:
             raise InvalidTuningError("a tuning must define at least one string")
         numbers = [string.number for string in self.strings]
-        if len(set(numbers)) != len(numbers):
-            raise InvalidTuningError(f"string numbers must be unique, got {numbers}")
-        if min(numbers) < 1:
-            raise InvalidTuningError(f"string numbers must be >= 1, got {numbers}")
+        if set(numbers) != set(range(1, count + 1)):
+            raise InvalidTuningError(
+                f"string numbers must be exactly 1..{count}, got {sorted(numbers)}"
+            )
 
     @property
     def string_count(self) -> int:

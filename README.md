@@ -26,13 +26,15 @@ command-line harness verifies the engine.
 
 Implemented:
 
-- Pitch classes (normalized 0–11) with enharmonic name parsing
+- Pitch classes (normalized 0–11 chromatic identity) with enharmonic name parsing
 - Pitches (pitch class + octave) with MIDI numbers and semitone transposition
-- Intervals as named semitone values (unison through octave)
+- ChromaticInterval: modulo-12 pitch-class displacement (0–11) for
+  root-relative fretboard analysis
 - Guitar string model: `pitch at fret = open pitch + fret semitones`
-- Tunings with validation, plus the standard EADGBE preset
+- Tunings with validation (string numbers exactly `1..N`), plus the standard
+  EADGBE preset
 - Configurable fretboard (arbitrary tuning, string count, fret count)
-- Pitch lookup, pitch-class search, exact-pitch search, and interval maps
+- Pitch lookup, pitch-class search, exact-pitch search, and displacement maps
   relative to a chosen root
 
 Not yet implemented (see `docs/architecture.md` for the roadmap):
@@ -69,8 +71,8 @@ There is no GUI yet. To inspect the fretboard model from the command line:
 uv run guitar-app             # or: python -m guitar_app.cli
 ```
 
-This prints the standard 12-fret pitch-class grid, the interval map relative to
-root A, and all locations of a chosen pitch class.
+This prints the standard 12-fret pitch-class grid, the chromatic-displacement
+map relative to root A, and all locations of a chosen pitch class.
 
 ## How to run tests and quality tools
 
@@ -86,7 +88,7 @@ uv run mypy .          # static type check
 ```
 src/guitar_app/
     core/            # UI-agnostic engines
-        theory/      # PitchClass, Pitch, Interval (no guitar concepts)
+        theory/      # PitchClass, Pitch, ChromaticInterval (no guitar concepts)
         instrument/  # GuitarString, Tuning, standard preset
         fretboard/   # Fretboard, FretPosition, FretboardPosition
     cli.py           # development harness (temporary stand-in for the UI)
@@ -107,9 +109,11 @@ See `docs/architecture.md`, `docs/domain-model.md`, and the ADRs in
 
 ## Known limitations
 
-- Enharmonic spelling is normalized to sharps for display; context-aware
-  spelling (e.g. `Eb` in a flat key) is not implemented yet.
-- `Interval` covers up to one octave; compound intervals are not modeled.
+- Context-aware note spelling (e.g. `Eb` in a flat key, or `F` vs `E#` where it
+  carries harmonic meaning) is a future theory/domain feature; display is
+  currently normalized to sharps.
+- No theoretical interval type yet: `ChromaticInterval` encodes distance only
+  (six semitones could be `#4` or `b5`).
 - No capo support yet (planned).
 - No scales, chords, progressions, layers, or audio yet.
 

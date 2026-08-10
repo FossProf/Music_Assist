@@ -11,7 +11,10 @@ from dataclasses import dataclass
 
 from guitar_app.core.errors import InvalidPositionError
 from guitar_app.core.instrument.tuning import Tuning
-from guitar_app.core.theory.interval import Interval, interval_between
+from guitar_app.core.theory.chromatic_interval import (
+    ChromaticInterval,
+    chromatic_interval_between,
+)
 from guitar_app.core.theory.pitch import Pitch, PitchClass
 
 
@@ -27,14 +30,15 @@ class FretPosition:
 class FretboardPosition:
     """A fretboard location enriched with the pitch sounding there.
 
-    ``interval_from_root`` is the pitch-class interval (0..11 semitones) from
-    a chosen root, or ``None`` when no root was supplied.
+    ``interval_from_root`` is the chromatic displacement (0..11 semitones) from
+    a chosen root, or ``None`` when no root was supplied. It encodes distance
+    only, not theoretical interval spelling.
     """
 
     string_number: int
     fret: int
     pitch: Pitch
-    interval_from_root: Interval | None = None
+    interval_from_root: ChromaticInterval | None = None
 
     @property
     def pitch_class(self) -> PitchClass:
@@ -87,9 +91,9 @@ class Fretboard:
         *,
         root: PitchClass | None = None,
     ) -> FretboardPosition:
-        """Return the enriched position, optionally with its interval from ``root``."""
+        """Return the enriched position, optionally with its displacement from ``root``."""
         pitch = self.pitch_at(string_number, fret)
-        interval = None if root is None else interval_between(root, pitch.pitch_class)
+        interval = None if root is None else chromatic_interval_between(root, pitch.pitch_class)
         return FretboardPosition(string_number, fret, pitch, interval)
 
     def positions(
@@ -98,7 +102,7 @@ class Fretboard:
     ) -> Iterator[FretboardPosition]:
         """Iterate every position in stored string order, lowest fret first.
 
-        When ``root`` is given, each position carries its pitch-class interval
+        When ``root`` is given, each position carries its chromatic displacement
         relative to ``root``.
         """
         for string in self.tuning.strings:
