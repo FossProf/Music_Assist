@@ -225,6 +225,30 @@ board.position_at(5, 3, root=PitchClass.A)  # C3, MINOR_THIRD from A
 list(board.positions(root=PitchClass.C))  # every position + displacement from C
 ```
 
+## ScaleFretboardPosition, map_scale_to_fretboard
+
+Scale-to-fretboard mapping is the integration boundary between the theory
+domain and the fretboard domain. `Scale` itself never imports guitar or
+fretboard modules; a focused function in `core.fretboard` projects a scale onto
+a fretboard.
+
+```python
+from guitar_app.core.fretboard.scale_mapping import map_scale_to_fretboard
+
+map_scale_to_fretboard(board, Scale(PitchClass.C, MAJOR.formula))
+```
+
+- `ScaleFretboardPosition` preserves the string/fret location, the sounding
+  `Pitch`, the `ScaleDegree`, and the root-relative `ChromaticInterval`. It
+  contains **no rendering information**.
+- Matching emits **one result per matching `ScaleTone`**. If a scale contains
+  two degrees resolving to the same pitch class (e.g. `#4` and `b5`), the same
+  fretboard location yields two results, one per degree — results are never
+  collapsed by pitch class.
+- Ordering is deterministic: fretboard iteration order (stored string order,
+  lowest fret first), then formula/tone order for multiple matches at one
+  position.
+
 ## Planned concepts
 
 The same style of typed value object will be used for:

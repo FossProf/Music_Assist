@@ -66,10 +66,15 @@ capo offsets. No fretboard geometry lives here.
 - `FretPosition` — a pure location (`string_number`, `fret`).
 - `FretboardPosition` — a location enriched with its pitch and optional interval
   from a root.
+- `ScaleFretboardPosition` / `map_scale_to_fretboard` — projects a `Scale`
+  (theory domain) onto a fretboard: every position belonging to the scale, with
+  its `ScaleDegree` and root-relative `ChromaticInterval`. This is the
+  integration boundary between theory and fretboard; `Scale` never imports
+  guitar/fretboard modules.
 
 This module answers *musical* questions ("which positions sound C? what interval
-is this position from the root?") and never rendering questions ("which color
-should this position be?").
+is this position from the root? which positions belong to this scale?") and
+never rendering questions ("which color should this position be?").
 
 ### cli (temporary)
 
@@ -100,6 +105,7 @@ by the PySide6 application.
 | ChromaticInterval      | core.theory          | nothing guitar-specific |
 | GuitarString, Tuning   | core.instrument      | core.theory             |
 | Fretboard, positions   | core.fretboard       | core.theory, core.instrument |
+| Scale↔fretboard mapping| core.fretboard       | core.theory, core.instrument |
 | Layers (planned)       | core.layers          | theory, instrument, fretboard |
 | Progression (planned)  | core.progression     | theory, fretboard       |
 | Audio (planned)        | core.audio           | core.theory (for pitch names) |
