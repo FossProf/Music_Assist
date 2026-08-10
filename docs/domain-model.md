@@ -121,6 +121,33 @@ degree value encodes: `#4` and `b5` may coexist in one formula, resolving to the
 same chromatic offset, without colliding. Named presets (major, natural minor,
 minor pentatonic) are intentionally not built in yet.
 
+## Scale, ScaleTone
+
+A `Scale` binds a root `PitchClass` to a `ScaleFormula`, producing the concrete
+tone set.
+
+```python
+scale = Scale(PitchClass.C, MAJOR)
+scale.root  # PitchClass.C
+scale.formula  # MAJOR
+scale.pitch_classes  # (C, D, E, F, G, A, B)
+```
+
+- A `ScaleTone` pairs a preserved `ScaleDegree` with the `PitchClass` it
+  resolves to. Derivation is `(root pitch-class value + degree chromatic
+  offset) mod 12`.
+- **Degree identity is preserved.** A formula containing both `#4` and `b5`
+  produces two distinct `ScaleTone` values that share a pitch class. Tones are
+  never reduced to a bare set/list of pitch classes.
+- `tones`, `pitch_classes`, and `scale_degrees` are ordered like the formula.
+  `pitch_classes` may repeat a pitch class when different degrees resolve to it.
+- `tone_for(degree)` returns the tone bound to a degree in the formula and
+  raises `InvalidScaleDegreeError` for a degree the formula does not contain.
+- Transposition is achieved by constructing the same formula with a different
+  root; there is no dedicated transpose API yet.
+- Enharmonic spelling is out of scope: tones use the normalized `PitchClass`,
+  and degree identity carries the theoretical distinction for now.
+
 ## GuitarString
 
 A single string identified by its conventional number (1 = highest/thinnest,
@@ -177,7 +204,6 @@ list(board.positions(root=PitchClass.C))  # every position + displacement from C
 
 The same style of typed value object will be used for:
 
-- `Scale` (a `ScaleFormula` plus a root pitch)
 - `ChordQuality` / `Chord` / `Triad`
 - `Key`
 - `Layer` / layer annotations (see `docs/architecture.md`)
