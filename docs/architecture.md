@@ -114,9 +114,16 @@ it calls a service and receives a ready-to-render `LayerResult`.
 - `evaluate_intervals(fretboard, root)` — evaluates the `IntervalLayer` for the
   given root and returns the ready-to-render
   `LayerResult[IntervalFretboardPosition]`.
+- `evaluate_triad(fretboard, root, quality, *, max_fret_span=...)` — builds
+  `Triad(root, quality)` and evaluates the `TriadLayer`, returning the richer
+  `TriadLayerResult` (every chord-tone position plus detected adjacent-string
+  voicings). `max_fret_span` limits the voicings' fret span.
+- `available_triad_qualities()` — the `TriadQuality` members in stable order
+  (Major, Minor, Diminished, Augmented), for populating a quality selector.
 
 Each concrete layer gets a dedicated service that matches its own evaluation
-inputs (scale layer takes `root` + `scale_id`, interval layer takes `root`);
+inputs (scale layer takes `root` + `scale_id`, interval layer takes `root`,
+triad layer takes `root` + `quality`);
 no generic multi-layer dispatcher exists yet, so UI composition decides which
 service to call.
 
