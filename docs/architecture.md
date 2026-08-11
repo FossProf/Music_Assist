@@ -105,6 +105,14 @@ it calls a service and receives a ready-to-render `LayerResult`.
   `UnknownScaleFormulaError` to the caller.
 - `available_scale_formulas()` — the catalog's named formulas in stable order,
   for populating a scale selector.
+- `evaluate_intervals(fretboard, root)` — evaluates the `IntervalLayer` for the
+  given root and returns the ready-to-render
+  `LayerResult[IntervalFretboardPosition]`.
+
+Each concrete layer gets a dedicated service that matches its own evaluation
+inputs (scale layer takes `root` + `scale_id`, interval layer takes `root`);
+no generic multi-layer dispatcher exists yet, so UI composition decides which
+service to call.
 
 Services depend on `core`; **`core` never imports `services`**.
 
@@ -168,8 +176,9 @@ application is the primary entry point (`guitar-app`).
   selectors, and custom fretboard widget are implemented; interval, chord-tone,
   and audio visualization will be added incrementally.
 - **services** — application-level services that orchestrate the core engines
-  on behalf of the UI. `evaluate_scale` and `available_scale_formulas` are
-  implemented; more operations (chord tones, progressions) will be added.
+  on behalf of the UI. `evaluate_scale`, `available_scale_formulas`, and
+  `evaluate_intervals` are implemented; more operations (chord tones,
+  progressions) will be added.
 
 ## Domain boundaries
 
