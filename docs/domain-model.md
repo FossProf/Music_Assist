@@ -249,6 +249,32 @@ map_scale_to_fretboard(board, Scale(PitchClass.C, MAJOR.formula))
   lowest fret first), then formula/tone order for multiple matches at one
   position.
 
+## IntervalFretboardPosition, map_intervals_to_fretboard
+
+Interval-to-fretboard mapping is the chromatic-displacement equivalent of the
+scale mapping: **every** fretboard position annotated with its root-relative
+`ChromaticInterval`, with no filtering or grouping.
+
+```python
+from guitar_app.core.fretboard.interval_mapping import map_intervals_to_fretboard
+
+map_intervals_to_fretboard(board, PitchClass.A)
+```
+
+- `IntervalFretboardPosition` preserves the string/fret location, the sounding
+  `Pitch`, and the root-relative `ChromaticInterval`. It contains **no
+  rendering information** and provides a `pitch_class` convenience property.
+- For each position in fretboard iteration order (stored string order, lowest
+  fret first), the interval is `chromatic_interval_between(root,
+  position.pitch_class)` — always exactly one result per position.
+- The mapping represents **chromatic displacement only** (`A`→`R`, `Bb`→`b2`,
+  `B`→`2`, `C`→`b3`, `C#`→`3`, `D`→`4`, `Eb`→`b5`, `E`→`5`, `F`→`b6`,
+  `F#`→`6`, `G`→`b7`, `G#`→`7`). It does not introduce a theoretical
+  interval/spelling model; the degree-style labels come from
+  `ChromaticInterval.abbreviation`.
+- No `IntervalLayer`, service, or UI exists yet; the mapping is a raw fretboard
+  domain function.
+
 ## Layer results
 
 Fretboard overlays are implemented as layers in `core.layers` (see
