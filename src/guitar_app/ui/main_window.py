@@ -114,8 +114,22 @@ class MainWindow(QMainWindow):
             )
             return
         self.statusBar().clearMessage()
-        self.selection_label.setText(f"{root.spelling()} {named.name}")
+        self.selection_label.setText(self._selection_label(root, named))
         self.fretboard_widget.set_annotations(STANDARD_BOARD, annotations)
+
+    def _selection_label(self, root: PitchClass, named: NamedScaleFormula) -> str:
+        """Describe the visible workspace: root, then the enabled layers.
+
+        Root is always shown because it defines interval context. The scale is
+        only named while the Scale layer is enabled, so the label never
+        describes hidden content.
+        """
+        root_spelling = root.spelling()
+        if self.layer_checkboxes["scale"].isChecked():
+            return f"{root_spelling} {named.name}"
+        if self.layer_checkboxes["interval"].isChecked():
+            return f"{root_spelling} Intervals"
+        return f"{root_spelling} — No layers"
 
     def _enabled_annotations(
         self,

@@ -272,7 +272,9 @@ map_intervals_to_fretboard(board, PitchClass.A)
   `F#`→`6`, `G`→`b7`, `G#`→`7`). It does not introduce a theoretical
   interval/spelling model; the degree-style labels come from
   `ChromaticInterval.abbreviation`.
-- No service or UI exists yet; the mapping is a raw fretboard domain function.
+- The mapping is exposed to the UI through `evaluate_intervals` (service),
+  `IntervalLayer`, and the render-annotation projection
+  (`ui.render_annotations`); it remains a pure fretboard domain function.
 
 ## Layer results
 

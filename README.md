@@ -19,12 +19,13 @@ the architecture.
 
 ## Current status
 
-**Milestone 1 — mathematical core model + first GUI vertical slice.** The domain
-model for pitch classes, pitches, intervals, guitar strings, tunings, and a
-configurable fretboard is implemented and unit tested, along with scales,
-scale-to-fretboard mapping, fretboard layers, and an application service layer.
-A first PySide6 desktop window lets you pick a root pitch class and a named
-scale and see it mapped across a standard-tuned fretboard.
+**Milestone 1 — mathematical core model + multi-layer GUI vertical slice.** The
+domain model for pitch classes, pitches, intervals, guitar strings, tunings,
+and a configurable fretboard is implemented and unit tested, along with scales,
+scale-to-fretboard mapping, interval-to-fretboard mapping, fretboard layers,
+and an application service layer. A PySide6 desktop window lets you pick a root
+pitch class and a named scale, toggle the Scale and Intervals layers, and see
+the enabled overlays rendered together across a standard-tuned fretboard.
 
 Implemented:
 
@@ -40,12 +41,15 @@ Implemented:
   relative to a chosen root
 - Scales (`Scale`, `ScaleTone`) and a catalog of named formulas (major, minor,
   pentatonics, modes) via the application service `evaluate_scale`
-- Fretboard layers (`Layer`, `LayerResult`, `ScaleLayer`)
-- PySide6 desktop window: root/scale selectors and a rendered fretboard
+- Fretboard layers (`Layer`, `LayerResult`, `ScaleLayer`, `IntervalLayer`) and
+  per-layer application services (`evaluate_scale`, `evaluate_intervals`)
+- PySide6 desktop window: root/scale selectors, Scale/Intervals layer
+  checkboxes, and a fretboard widget that renders the enabled layers together
+  (scale annotations centered, interval annotations as secondary badges)
 
 Not yet implemented (see `docs/architecture.md` for the roadmap):
 
-- Additional layers (intervals, chords, progressions, ...)
+- Additional layers (chords, progressions, ...)
 - Chord and progression analysis
 - Audio capture and pitch detection
 - Circle-of-fifths and other exploratory tools
@@ -77,9 +81,9 @@ Launch the desktop application (requires a display):
 uv run guitar-app             # or: python -m guitar_app.app
 ```
 
-This opens a window with root and scale selectors. The default selection (A
-Minor Pentatonic) is shown on the fretboard; changing either selector updates
-it.
+This opens a window with root and scale selectors plus Scale/Intervals layer
+checkboxes. The default view (A Minor Pentatonic) is shown on the fretboard;
+changing a selector or toggling a layer updates it.
 
 To inspect the fretboard model from the command line instead:
 
@@ -106,10 +110,11 @@ src/guitar_app/
     core/            # UI-agnostic engines
         theory/      # PitchClass, Pitch, ChromaticInterval, Scale, ScaleDegree
         instrument/  # GuitarString, Tuning, standard preset
-        fretboard/   # Fretboard, FretPosition, scale mapping
-        layers/      # Layer contract, LayerResult, ScaleLayer
+        fretboard/   # Fretboard, FretPosition, scale & interval mappings
+        layers/      # Layer contract, LayerResult, ScaleLayer, IntervalLayer
     services/        # application services orchestrating the core (Qt-free)
-    ui/              # PySide6 application (main window, fretboard widget)
+    ui/              # PySide6 app: layer controls, render annotations,
+                     #   main window, fretboard widget
     cli.py           # development-only CLI harness
     app.py           # desktop application entry point
 ```

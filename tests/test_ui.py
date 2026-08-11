@@ -288,6 +288,18 @@ class TestLayerCheckboxes:
         pixmap = window.fretboard_widget.grab()
         assert not pixmap.isNull()
 
+    def test_disabling_intervals_keeps_scale_annotations(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        assert any(
+            annotation.role in (RenderRole.INTERVAL, RenderRole.INTERVAL_ROOT)
+            for annotation in window.fretboard_widget.annotations
+        )
+        window.layer_checkboxes["interval"].setChecked(False)
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
+        )
+
     def test_changing_root_updates_all_enabled_layers(self, qapp: QApplication) -> None:
         window = MainWindow()
         window.layer_checkboxes["interval"].setChecked(True)
@@ -346,3 +358,61 @@ class TestLayerCheckboxes:
         window.layer_checkboxes["interval"].setChecked(False)
         assert not window.fretboard_widget.grab().isNull()  # neither
         assert window.fretboard_widget.annotations == ()
+
+
+class TestSelectionLabel:
+    def test_label_scale_only(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window.selection_label.text() == "A Minor Pentatonic"
+
+    def test_label_intervals_only(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        window.layer_checkboxes["interval"].setChecked(True)
+        assert window.selection_label.text() == "A Intervals"
+
+    def test_label_both_enabled(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        assert window.selection_label.text() == "A Minor Pentatonic"
+
+    def test_label_both_disabled(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        assert window.selection_label.text() == "A — No layers"
+
+    def test_re_enabling_scale_restores_currently_selected_scale_label(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        dorian_index = next(
+            i for i, named in enumerate(available_scale_formulas()) if named.id == "dorian"
+        )
+        window.scale_selector.setCurrentIndex(dorian_index)
+        assert window.selection_label.text() == "A — No layers"
+        window.layer_checkboxes["scale"].setChecked(True)
+        assert window.selection_label.text() == "A Dorian"
+
+    def test_changing_scale_while_intervals_only_keeps_interval_label(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        window.layer_checkboxes["interval"].setChecked(True)
+        dorian_index = next(
+            i for i, named in enumerate(available_scale_formulas()) if named.id == "dorian"
+        )
+        window.scale_selector.setCurrentIndex(dorian_index)
+        assert window.selection_label.text() == "A Intervals"
+
+    def test_changing_root_updates_label_in_each_state(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.root_selector.setCurrentIndex(0)  # C
+        assert window.selection_label.text() == "C Minor Pentatonic"  # scale only
+        window.layer_checkboxes["interval"].setChecked(True)
+        assert window.selection_label.text() == "C Minor Pentatonic"  # both
+        window.layer_checkboxes["scale"].setChecked(False)
+        assert window.selection_label.text() == "C Intervals"  # intervals only
+        window.layer_checkboxes["interval"].setChecked(False)
+        assert window.selection_label.text() == "C — No layers"  # neither
