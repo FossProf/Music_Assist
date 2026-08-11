@@ -1,7 +1,7 @@
 """Command-line harness for inspecting the fretboard model.
 
-Development-only; the production UI will be a separate PySide6 application.
-Run with ``python -m guitar_app.cli`` or the ``guitar-app`` console script.
+Development-only companion to the desktop application. Run with
+``python -m guitar_app.cli`` or the ``guitar-app-cli`` console script.
 """
 
 from __future__ import annotations

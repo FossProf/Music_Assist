@@ -6,7 +6,7 @@ Guitar Assist is organized as a small number of strictly separated subsystems.
 The direction of dependency is:
 
 ```
-UI / application      (PySide6, planned)
+UI / application      (PySide6)
         |
         v
 services              (application services)
@@ -105,11 +105,36 @@ it calls a service and receives a ready-to-render `LayerResult`.
 
 Services depend on `core`; **`core` never imports `services`**.
 
+### ui — PySide6 desktop application
+
+The only Qt-aware subsystem. It owns all rendering, consumes structured domain
+data and service results, and performs no theory calculations.
+
+- `guitar_app.app` — the desktop entry point (`guitar-app` console script).
+- `ui.main_window.MainWindow` — the main window: root and scale selectors, a
+  current-selection label, and the fretboard widget. It calls
+  `evaluate_scale(...)` on selection change and hands the resulting
+  `LayerResult` to the widget; service/domain errors are translated into a
+  status-bar message.
+- `ui.fretboard_widget.FretboardWidget` — a `QWidget` + `QPainter` canvas that
+  renders an already-evaluated `LayerResult[ScaleFretboardPosition]` on a
+  fretboard. It draws strings, frets (with a distinct nut), inlaid fret markers
+  at 3/5/7/9/12, and scale-degree markers; open-string (fret 0) markers are
+  hollow rings to keep fret 0 unambiguous.
+- `ui.geometry` — UI-only layout math mapping domain `(string_number, fret)`
+  pairs to widget coordinates. It is deliberately free of PySide6 so the
+  coordinate mapping is unit-testable without a display; pixel coordinates are
+  never stored in core/domain objects.
+
+The UI may import `core` domain types and `services`; **`core` and `services`
+never import `ui` or PySide6**.
+
 ### cli (temporary)
 
 A development-only command-line harness that prints the fretboard and its
-interval map. It exists to verify the engine without a GUI and will be replaced
-by the PySide6 application.
+interval map. It remains available as a secondary entry point
+(`guitar-app-cli`) for verifying the engine without a GUI; the desktop
+application is the primary entry point (`guitar-app`).
 
 ### Planned subsystems
 
@@ -121,8 +146,9 @@ by the PySide6 application.
 - **core.audio** — pitch/onset detection, tuning, and note tracking (later).
   Must remain independent of the theory engine and the UI; DSP code may use
   NumPy or native libraries only once profiling justifies it.
-- **ui** — the PySide6 desktop application, including a custom fretboard
-  widget that consumes structured domain data and owns all rendering.
+- **ui** — the PySide6 desktop application. The main window, root/scale
+  selectors, and custom fretboard widget are implemented; interval, chord-tone,
+  and audio visualization will be added incrementally.
 - **services** — application-level services that orchestrate the core engines
   on behalf of the UI. `evaluate_scale` and `available_scale_formulas` are
   implemented; more operations (chord tones, progressions) will be added.
@@ -138,15 +164,21 @@ by the PySide6 application.
 | Scale↔fretboard mapping| core.fretboard       | core.theory, core.instrument |
 | Layers                 | core.layers          | theory, instrument, fretboard |
 | Services               | services             | core engines (any)       |
+| Rendering geometry     | ui.geometry          | core.fretboard (coords)  |
+| Fretboard widget       | ui                   | core.fretboard, core.layers, services |
 | Progression (planned)  | core.progression     | theory, fretboard       |
 | Audio (planned)        | core.audio           | core.theory (for pitch names) |
-| UI (planned)           | ui                   | everything above, via services |
+| UI                     | ui                   | everything above, via services |
 
 Hard rules:
 
 - `core.*` never imports `guitar_app.ui` or any GUI library.
 - `core.*` never imports `guitar_app.services`; dependency flows one way,
   UI → services → core.
+- `guitar_app.services` never imports PySide6 or `guitar_app.ui`; the UI is the
+  only Qt-aware subsystem.
+- `ui.geometry` is the only place that maps domain coordinates to widget
+  coordinates; pixel coordinates are never stored in core objects.
 - `core.fretboard` returns domain objects; it contains no drawing code.
 - Domain errors are raised as domain exceptions (`InvalidPitchError`,
   `InvalidTuningError`, `InvalidPositionError`) and translated into
