@@ -23,3 +23,7 @@ class InvalidScaleDegreeError(ValueError):
 
 class UnknownScaleFormulaError(ValueError):
     """Raised when a named scale formula ID is not in the catalog."""
+
+
+class InvalidVoicingError(ValueError):
+    """Raised for malformed triad voicings."""

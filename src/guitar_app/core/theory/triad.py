@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from guitar_app.core.errors import InvalidScaleDegreeError
 from guitar_app.core.theory.pitch import PitchClass
 from guitar_app.core.theory.scale_degree import ScaleDegree, ScaleFormula
 
@@ -48,6 +49,43 @@ class TriadQuality(Enum):
 
     def __str__(self) -> str:
         return self.display_name
+
+
+class TriadInversion(Enum):
+    """The inversion of a three-note triad voicing.
+
+    A pure theory enum naming the three positions. Classification from a
+    sounding pitch is done via :meth:`from_lowest_degree`, using the preserved
+    :class:`ScaleDegree` of the lowest sounding chord tone.
+    """
+
+    ROOT_POSITION = "root position"
+    FIRST_INVERSION = "first inversion"
+    SECOND_INVERSION = "second inversion"
+
+    @property
+    def display_name(self) -> str:
+        """The human-readable name, e.g. ``"root position"``."""
+        return self.value
+
+    @classmethod
+    def from_lowest_degree(cls, degree: ScaleDegree) -> TriadInversion:
+        """Classify an inversion from the lowest sounding chord-tone degree.
+
+        ``1`` is root position, ``3``/``b3`` is first inversion, and
+        ``5``/``b5``/``#5`` is second inversion. Raises
+        :class:`InvalidScaleDegreeError` for degrees that are not triad chord
+        tones.
+        """
+        if degree.number == 1:
+            return cls.ROOT_POSITION
+        if degree.number == 3:
+            return cls.FIRST_INVERSION
+        if degree.number == 5:
+            return cls.SECOND_INVERSION
+        raise InvalidScaleDegreeError(
+            f"not a triad chord-tone degree (expected 1, 3, or 5): {degree.label}"
+        )
 
 
 @dataclass(frozen=True, slots=True)

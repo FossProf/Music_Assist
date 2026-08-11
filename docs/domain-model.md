@@ -343,6 +343,81 @@ map_triad_to_fretboard(board, Triad(PitchClass.C, TriadQuality.MAJOR))
   fingering/span constraints. That is the explicit job of a future voicing
   model.
 
+## TriadInversion, TriadVoicing, find_triad_voicings
+
+The first guitar-specific voicing model: adjacent-string triad voicings. The
+pipeline is:
+
+```text
+Triad
+  ↓
+map_triad_to_fretboard
+  ↓
+find_triad_voicings
+```
+
+`Triad` stays guitar-agnostic; tone mapping and voicing detection are separate
+functions, and voicing detection never re-derives membership.
+
+### TriadInversion
+
+A pure-theory enum naming the three positions of a three-note voicing:
+`ROOT_POSITION`, `FIRST_INVERSION`, `SECOND_INVERSION`. Classification uses the
+preserved `ScaleDegree` of the lowest sounding chord tone, never raw pitch
+classes and never physical string number:
+
+- lowest degree `1` → root position
+- lowest degree `3`/`b3` → first inversion
+- lowest degree `5`/`b5`/`#5` → second inversion
+
+`TriadInversion.from_lowest_degree(degree)` implements this and rejects
+non-triad degrees. Because a custom tuning can make a nominally lower string
+sound high, the bass is always `min(tone.pitch)` over the completed voicing.
+
+### TriadVoicing
+
+An immutable guitar-domain result: a string set, its three tones in
+string-set order, and the classified inversion.
+
+```python
+TriadVoicing(
+    string_set: tuple[int, int, int],      # ascending, e.g. (3, 4, 5)
+    tones: tuple[TriadFretboardPosition, ...],  # one per string, string-set order
+    inversion: TriadInversion,
+)
+```
+
+Invariants enforced at construction: exactly three tones; exactly one position
+per string in the declared string set; all three triad degree identities occur
+exactly once. Tones belong to the same `Triad` by construction (from one
+`map_triad_to_fretboard` call). Derived properties: `fret_span` (highest minus
+lowest fret, open = 0) and `lowest_pitch` (the bass). No fingering or
+finger-number data is stored.
+
+### First-pass playability rule
+
+A voicing counts as playable when all of these hold:
+
+1. it uses exactly one note on each of three adjacent strings (all adjacent
+   sets are derived from the instrument's string count; fewer than three
+   strings yields no voicings, not an error);
+2. all three triad tones are present exactly once;
+3. the fret span between the highest and lowest fretted positions is at most
+   `max_fret_span` (default `DEFAULT_MAX_FRET_SPAN = 4`); open strings count
+   as fret 0.
+
+This is deliberately a coarse geometric constraint, **not a complete
+ergonomic model**: finger stretches, barre technique, hand size, and physical
+impossibility beyond the span rule are not modeled, and no CAGED or
+fingering classification is made. Negative span limits are rejected.
+
+### Ordering
+
+Results are deterministic: string sets in ascending tuple order, then lowest
+fret ascending, then the fret tuple in string-set order, with the inversion
+only as a final stable tie-breaker (unreachable in practice because the fret
+tuple uniquely identifies a combination).
+
 ## Layer results
 
 Fretboard overlays are implemented as layers in `core.layers` (see
@@ -381,6 +456,7 @@ hard to express.
 - `InvalidPositionError` — string/fret positions outside the fretboard.
 - `InvalidScaleDegreeError` — invalid scale degrees or malformed scale formulas.
 - `UnknownScaleFormulaError` — a named scale formula ID is not in the catalog.
+- `InvalidVoicingError` — malformed triad voicings.
 
 These are domain errors raised by the core engines; the application layer is
 responsible for turning them into user-facing messages.
