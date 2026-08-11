@@ -40,6 +40,8 @@ _OPEN_PEN = QColor("#1f6fb2")
 _INTERVAL_FILL = QColor("#f2e4d0")
 _INTERVAL_TEXT = QColor("#5a4632")
 _INTERVAL_OUTLINE = QColor("#b9a082")
+_INTERVAL_ROOT_FILL = QColor("#b26a1f")
+_INTERVAL_ROOT_TEXT = QColor("#ffffff")
 _BADGE_FILL = QColor("#ffffff")
 _BADGE_TEXT = QColor("#4a3f33")
 _BADGE_OUTLINE = QColor("#8a7a6a")
@@ -47,7 +49,8 @@ _BADGE_OUTLINE = QColor("#8a7a6a")
 #: Fraction of a primary marker radius used for the secondary badge radius.
 _BADGE_SCALE = 0.55
 
-_SCALE_ROLES = (RenderRole.ROOT, RenderRole.SCALE_TONE)
+_SCALE_ROLES = (RenderRole.SCALE_ROOT, RenderRole.SCALE_TONE)
+_INTERVAL_ROLES = (RenderRole.INTERVAL_ROOT, RenderRole.INTERVAL)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +136,7 @@ class FretboardWidget(QWidget):
             intervals = [
                 annotation
                 for annotation in position_annotations
-                if annotation.role is RenderRole.INTERVAL
+                if annotation.role in _INTERVAL_ROLES
             ]
             if scale:
                 primary = scale[0]
@@ -216,7 +219,7 @@ class FretboardWidget(QWidget):
             painter.drawEllipse(center, radius, radius)
             text_color = _DEGREE_TEXT if annotation.role in _SCALE_ROLES else _INTERVAL_TEXT
             painter.setPen(QPen(text_color))
-        elif annotation.role is RenderRole.ROOT:
+        elif annotation.role is RenderRole.SCALE_ROOT:
             painter.setBrush(QBrush(_TONIC_FILL))
             painter.setPen(QPen(Qt.PenStyle.NoPen))
             painter.drawEllipse(center, radius, radius)
@@ -226,6 +229,11 @@ class FretboardWidget(QWidget):
             painter.setPen(QPen(Qt.PenStyle.NoPen))
             painter.drawEllipse(center, radius, radius)
             painter.setPen(QPen(_DEGREE_TEXT))
+        elif annotation.role is RenderRole.INTERVAL_ROOT:
+            painter.setBrush(QBrush(_INTERVAL_ROOT_FILL))
+            painter.setPen(QPen(Qt.PenStyle.NoPen))
+            painter.drawEllipse(center, radius, radius)
+            painter.setPen(QPen(_INTERVAL_ROOT_TEXT))
         else:
             painter.setBrush(QBrush(_INTERVAL_FILL))
             painter.setPen(QPen(Qt.PenStyle.NoPen))

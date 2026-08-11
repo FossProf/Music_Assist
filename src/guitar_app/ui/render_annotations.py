@@ -30,11 +30,13 @@ class RenderRole(Enum):
     """Presentation category of a render annotation.
 
     The widget uses the role to pick a visual treatment; the enum carries no
-    geometry, color, or painter information.
+    geometry, color, or painter information. Root roles are split per layer so
+    a scale root and an interval root at the same position stay distinct.
     """
 
-    ROOT = "root"
+    SCALE_ROOT = "scale_root"
     SCALE_TONE = "scale_tone"
+    INTERVAL_ROOT = "interval_root"
     INTERVAL = "interval"
 
 
@@ -57,12 +59,12 @@ def render_scale_result(
 ) -> tuple[FretboardRenderAnnotation, ...]:
     """Project a scale layer result into render annotations.
 
-    Labels are ``ScaleDegree.label``. The tonic receives the ``ROOT`` role;
-    every other scale tone receives ``SCALE_TONE``.
+    Labels are ``ScaleDegree.label``. The tonic receives the ``SCALE_ROOT``
+    role; every other scale tone receives ``SCALE_TONE``.
     """
     annotations: list[FretboardRenderAnnotation] = []
     for annotation in result.annotations:
-        role = RenderRole.ROOT if annotation.degree == _TONIC else RenderRole.SCALE_TONE
+        role = RenderRole.SCALE_ROOT if annotation.degree == _TONIC else RenderRole.SCALE_TONE
         annotations.append(
             FretboardRenderAnnotation(annotation.position, annotation.degree.label, role)
         )
@@ -75,13 +77,14 @@ def render_interval_result(
     """Project an interval layer result into render annotations.
 
     Labels are ``ChromaticInterval.abbreviation``. Positions at the root
-    receive the ``ROOT`` role; every other position receives ``INTERVAL``.
+    receive the ``INTERVAL_ROOT`` role; every other position receives
+    ``INTERVAL``.
     """
     return tuple(
         FretboardRenderAnnotation(
             annotation.position,
             annotation.chromatic_interval.abbreviation,
-            RenderRole.ROOT
+            RenderRole.INTERVAL_ROOT
             if annotation.chromatic_interval is ChromaticInterval.UNISON
             else RenderRole.INTERVAL,
         )

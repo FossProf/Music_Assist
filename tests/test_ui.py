@@ -146,6 +146,36 @@ class TestFretboardWidget:
         assert shared.secondary.role is RenderRole.INTERVAL
         assert shared.secondary.label == "5"
 
+    def test_shared_root_position_keeps_scale_root_primary_and_interval_root_secondary(
+        self, qapp: QApplication
+    ) -> None:
+        combined = render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
+        ) + render_interval_result(evaluate_intervals(STANDARD_BOARD, PitchClass.A))
+        widget = FretboardWidget()
+        widget.set_annotations(STANDARD_BOARD, combined)
+        plans = {plan.position: plan for plan in widget._build_plan()}
+        shared = plans[FretPosition(6, 5)]  # 6th string fret 5 is an A root
+        assert shared.primary.role is RenderRole.SCALE_ROOT
+        assert shared.primary.label == "1"
+        assert shared.secondary is not None
+        assert shared.secondary.role is RenderRole.INTERVAL_ROOT
+        assert shared.secondary.label == "R"
+
+    def test_interval_only_root_annotation_remains_visible_and_emphasized(
+        self, qapp: QApplication
+    ) -> None:
+        annotations = render_interval_result(evaluate_intervals(STANDARD_BOARD, PitchClass.A))
+        widget = FretboardWidget()
+        widget.set_annotations(STANDARD_BOARD, annotations)
+        plans = {plan.position: plan for plan in widget._build_plan()}
+        root_plan = plans[FretPosition(6, 5)]  # interval-only A root position
+        assert root_plan.primary.role is RenderRole.INTERVAL_ROOT
+        assert root_plan.primary.label == "R"
+        assert root_plan.secondary is None
+        pixmap = widget.grab()
+        assert not pixmap.isNull()
+
     def test_widget_source_has_no_scale_domain_types(self) -> None:
         module = inspect.getmodule(FretboardWidget)
         assert module is not None and module.__file__ is not None
@@ -212,7 +242,7 @@ class TestIntervalsCheckbox:
         window = MainWindow()
         assert window.intervals_checkbox.isChecked() is False
         assert all(
-            annotation.role is not RenderRole.INTERVAL
+            annotation.role in (RenderRole.SCALE_ROOT, RenderRole.SCALE_TONE)
             for annotation in window.fretboard_widget.annotations
         )
 
@@ -221,7 +251,7 @@ class TestIntervalsCheckbox:
         window.intervals_checkbox.setChecked(True)
         assert window.intervals_checkbox.isChecked() is True
         assert any(
-            annotation.role is RenderRole.INTERVAL
+            annotation.role in (RenderRole.INTERVAL, RenderRole.INTERVAL_ROOT)
             for annotation in window.fretboard_widget.annotations
         )
         expected = render_scale_result(

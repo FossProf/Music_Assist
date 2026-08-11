@@ -26,7 +26,7 @@ BOARD = Fretboard(STANDARD, 12)
 
 class TestRenderModel:
     def test_annotations_are_immutable(self) -> None:
-        annotation = FretboardRenderAnnotation(FretPosition(6, 0), "R", RenderRole.ROOT)
+        annotation = FretboardRenderAnnotation(FretPosition(6, 0), "R", RenderRole.INTERVAL_ROOT)
         with pytest.raises(FrozenInstanceError):
             annotation.label = "5"  # type: ignore[misc]
 
@@ -47,7 +47,7 @@ class TestRenderScaleResult:
             FretPosition(6, 0), "5", RenderRole.SCALE_TONE
         )
         assert annotations[FretPosition(5, 0)] == FretboardRenderAnnotation(
-            FretPosition(5, 0), "1", RenderRole.ROOT
+            FretPosition(5, 0), "1", RenderRole.SCALE_ROOT
         )
         assert annotations[FretPosition(5, 3)] == FretboardRenderAnnotation(
             FretPosition(5, 3), "b3", RenderRole.SCALE_TONE
@@ -57,7 +57,7 @@ class TestRenderScaleResult:
         result = evaluate_scale(BOARD, PitchClass.A, "minor_pentatonic")
         annotations = render_scale_result(result)
         assert all(
-            annotation.role in (RenderRole.ROOT, RenderRole.SCALE_TONE)
+            annotation.role in (RenderRole.SCALE_ROOT, RenderRole.SCALE_TONE)
             for annotation in annotations
         )
 
@@ -66,7 +66,7 @@ class TestRenderScaleResult:
         root_annotations = [
             annotation
             for annotation in render_scale_result(result)
-            if annotation.role is RenderRole.ROOT
+            if annotation.role is RenderRole.SCALE_ROOT
         ]
         assert len(root_annotations) == len(BOARD.pitch_class_locations(PitchClass.A))
         assert all(annotation.label == "1" for annotation in root_annotations)
@@ -87,10 +87,10 @@ class TestRenderIntervalResult:
             annotation.position: annotation for annotation in render_interval_result(result)
         }
         assert annotations[FretPosition(5, 0)] == FretboardRenderAnnotation(
-            FretPosition(5, 0), "R", RenderRole.ROOT
+            FretPosition(5, 0), "R", RenderRole.INTERVAL_ROOT
         )
         assert annotations[FretPosition(6, 5)] == FretboardRenderAnnotation(
-            FretPosition(6, 5), "R", RenderRole.ROOT
+            FretPosition(6, 5), "R", RenderRole.INTERVAL_ROOT
         )
 
     def test_non_root_positions_get_interval_role(self) -> None:
@@ -110,7 +110,7 @@ class TestRenderIntervalResult:
         annotations = {
             annotation.position: annotation for annotation in render_interval_result(result)
         }
-        assert annotations[FretPosition(5, 3)].role is RenderRole.ROOT
+        assert annotations[FretPosition(5, 3)].role is RenderRole.INTERVAL_ROOT
         assert annotations[FretPosition(5, 3)].label == ChromaticInterval.UNISON.abbreviation
 
 
@@ -131,3 +131,31 @@ class TestCombinedProjections:
         roles = {annotation.role for annotation in by_position[shared]}
         assert RenderRole.SCALE_TONE in roles
         assert RenderRole.INTERVAL in roles
+
+    def test_shared_root_position_keeps_scale_and_interval_roots(self) -> None:
+        scale_annotations = render_scale_result(
+            evaluate_scale(BOARD, PitchClass.A, "minor_pentatonic")
+        )
+        interval_annotations = render_interval_result(evaluate_intervals(BOARD, PitchClass.A))
+        combined = scale_annotations + interval_annotations
+
+        by_position: dict[FretPosition, list[FretboardRenderAnnotation]] = {}
+        for annotation in combined:
+            by_position.setdefault(annotation.position, []).append(annotation)
+
+        shared = FretPosition(6, 5)  # 6th string fret 5 is an A root
+        assert shared in by_position
+        scale_roots = [
+            annotation
+            for annotation in by_position[shared]
+            if annotation.role is RenderRole.SCALE_ROOT
+        ]
+        interval_roots = [
+            annotation
+            for annotation in by_position[shared]
+            if annotation.role is RenderRole.INTERVAL_ROOT
+        ]
+        assert len(scale_roots) == 1
+        assert len(interval_roots) == 1
+        assert scale_roots[0].label == "1"
+        assert interval_roots[0].label == "R"
