@@ -137,13 +137,20 @@ The only Qt-aware subsystem. It owns all rendering, consumes structured domain
 data and service results, and performs no theory calculations.
 
 - `guitar_app.app` — the desktop entry point (`guitar-app` console script).
-- `ui.main_window.MainWindow` — the main window: root and scale selectors, an
-  Intervals checkbox, a current-selection label, and the fretboard widget. On
-  any selection/toggle change it calls `evaluate_scale(...)` and, when
-  intervals are enabled, `evaluate_intervals(...)`, projects the enabled
-  results into render annotations, combines them, and hands the immutable
-  collection to the widget; service/domain errors are translated into a
-  status-bar message.
+- `ui.layer_controls` — the UI model of which overlays are visible.
+  `LayerControl(id, name, default_enabled)` plus `LAYER_CONTROLS`, the
+  available overlays in deterministic order (`scale` enabled, `interval`
+  disabled). IDs match the corresponding core layer IDs. Deliberately free of
+  PySide6 and carries no widgets, callbacks, services, or layer objects; the
+  MainWindow derives its checkboxes from these definitions.
+- `ui.main_window.MainWindow` — the main window: root and scale selectors, one
+  checkbox per `LAYER_CONTROLS` entry, a current-selection label, and the
+  fretboard widget. On any selection/toggle change it evaluates **only the
+  enabled** layers (an explicit branch per known UI layer — no generic
+  dispatcher), projects each result into render annotations, combines them in
+  control order, and hands the immutable collection to the widget; disabling
+  every layer is a supported empty state, and service/domain errors are
+  translated into a status-bar message.
 - `ui.render_annotations` — the UI projection boundary. `FretboardRenderAnnotation`
   (`position`, `label`, `role`) plus `render_scale_result` and
   `render_interval_result` that convert each concrete layer result into render
@@ -184,9 +191,9 @@ application is the primary entry point (`guitar-app`).
   Must remain independent of the theory engine and the UI; DSP code may use
   NumPy or native libraries only once profiling justifies it.
 - **ui** — the PySide6 desktop application. The main window, root/scale
-  selectors, an Intervals checkbox, the UI render-annotation projection, and
-  the fretboard widget are implemented; chord-tone and audio visualization will
-  be added incrementally.
+  selectors, layer checkboxes derived from `ui.layer_controls`, the UI
+  render-annotation projection, and the fretboard widget are implemented;
+  chord-tone and audio visualization will be added incrementally.
 - **services** — application-level services that orchestrate the core engines
   on behalf of the UI. `evaluate_scale`, `available_scale_formulas`, and
   `evaluate_intervals` are implemented; more operations (chord tones,
@@ -204,6 +211,7 @@ application is the primary entry point (`guitar-app`).
 | Interval↔fretboard map.| core.fretboard       | core.theory, core.instrument |
 | Layers                 | core.layers          | theory, instrument, fretboard |
 | Services               | services             | core engines (any)       |
+| Layer controls         | ui.layer_controls     | nothing (UI model)       |
 | Render annotations     | ui.render_annotations | core.layers, core.fretboard |
 | Rendering geometry     | ui.geometry          | core.fretboard (coords)  |
 | Fretboard widget       | ui                   | core.fretboard, ui.render_annotations |

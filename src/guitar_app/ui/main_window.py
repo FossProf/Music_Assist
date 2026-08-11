@@ -1,4 +1,4 @@
-"""Main window: root and scale selectors, an intervals toggle, and the fretboard widget."""
+"""Main window: root/scale selectors, layer checkboxes, and the fretboard widget."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from guitar_app.core.theory.scale_formulas import MINOR_PENTATONIC, NamedScaleFo
 from guitar_app.services.interval_service import evaluate_intervals
 from guitar_app.services.scale_service import available_scale_formulas, evaluate_scale
 from guitar_app.ui.fretboard_widget import FretboardWidget
+from guitar_app.ui.layer_controls import LAYER_CONTROLS
 from guitar_app.ui.render_annotations import (
     FretboardRenderAnnotation,
     render_interval_result,
@@ -33,10 +34,12 @@ STANDARD_BOARD = Fretboard(STANDARD, 12)
 class MainWindow(QMainWindow):
     """The application's main window.
 
-    Owns the root/scale selectors, an intervals checkbox, and the fretboard
-    widget. It calls the scale and interval services and projects the results
-    into render annotations before handing them to the widget; it never
-    constructs scale formulas or performs interval calculations itself.
+    Owns the root/scale selectors, a checkbox per layer-control definition,
+    and the fretboard widget. On any selection or toggle change it evaluates
+    only the enabled layers through their services, projects the results into
+    render annotations in control order, and hands the combined immutable
+    collection to the widget; it never constructs scale formulas or performs
+    interval calculations itself.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -47,7 +50,9 @@ class MainWindow(QMainWindow):
 
         self.root_selector = QComboBox()
         self.scale_selector = QComboBox()
-        self.intervals_checkbox = QCheckBox("Intervals")
+        self.layer_checkboxes: dict[str, QCheckBox] = {
+            control.id: QCheckBox(control.name) for control in LAYER_CONTROLS
+        }
         self.selection_label = QLabel()
         self.fretboard_widget = FretboardWidget()
 
@@ -63,6 +68,8 @@ class MainWindow(QMainWindow):
             self.scale_selector.addItem(named.name)
         self.root_selector.setCurrentIndex(self._pitch_classes.index(PitchClass.A))
         self.scale_selector.setCurrentIndex(self._scale_formulas.index(MINOR_PENTATONIC))
+        for control in LAYER_CONTROLS:
+            self.layer_checkboxes[control.id].setChecked(control.default_enabled)
 
     def _build_layout(self) -> None:
         selectors = QWidget()
@@ -73,7 +80,8 @@ class MainWindow(QMainWindow):
         selectors_layout.addWidget(self.root_selector)
         selectors_layout.addWidget(QLabel("Scale:"))
         selectors_layout.addWidget(self.scale_selector)
-        selectors_layout.addWidget(self.intervals_checkbox)
+        for control in LAYER_CONTROLS:
+            selectors_layout.addWidget(self.layer_checkboxes[control.id])
         selectors_layout.addWidget(self.selection_label)
         selectors_layout.addStretch(1)
 
@@ -89,16 +97,17 @@ class MainWindow(QMainWindow):
     def _connect_selectors(self) -> None:
         self.root_selector.currentIndexChanged.connect(self._update_fretboard)
         self.scale_selector.currentIndexChanged.connect(self._update_fretboard)
-        self.intervals_checkbox.toggled.connect(self._update_fretboard)
+        for control in LAYER_CONTROLS:
+            self.layer_checkboxes[control.id].toggled.connect(self._update_fretboard)
 
     def _update_fretboard(self, *_args: object) -> None:
-        """Re-evaluate the active layers for the current selection and redraw."""
+        """Re-evaluate the enabled layers for the current selection and redraw."""
         if self.root_selector.currentIndex() < 0 or self.scale_selector.currentIndex() < 0:
             return
         named = self._scale_formulas[self.scale_selector.currentIndex()]
         root = self._pitch_classes[self.root_selector.currentIndex()]
         try:
-            scale_result = evaluate_scale(STANDARD_BOARD, root, named.id)
+            annotations = self._enabled_annotations(root, named)
         except (UnknownScaleFormulaError, InvalidScaleDegreeError) as exc:
             self.statusBar().showMessage(
                 f"Could not evaluate {root.spelling()} {named.name}: {exc}"
@@ -106,9 +115,27 @@ class MainWindow(QMainWindow):
             return
         self.statusBar().clearMessage()
         self.selection_label.setText(f"{root.spelling()} {named.name}")
+        self.fretboard_widget.set_annotations(STANDARD_BOARD, annotations)
 
-        annotations: list[FretboardRenderAnnotation] = list(render_scale_result(scale_result))
-        if self.intervals_checkbox.isChecked():
-            interval_result = evaluate_intervals(STANDARD_BOARD, root)
-            annotations.extend(render_interval_result(interval_result))
-        self.fretboard_widget.set_annotations(STANDARD_BOARD, tuple(annotations))
+    def _enabled_annotations(
+        self,
+        root: PitchClass,
+        named: NamedScaleFormula,
+    ) -> tuple[FretboardRenderAnnotation, ...]:
+        """Project only the enabled layers, combined in control order.
+
+        A small explicit branch per known UI layer is intentional: there is no
+        generic dispatcher, and the scale layer's ``evaluate_scale`` needs the
+        selected scale id while the interval layer only needs the root.
+        """
+        annotations: list[FretboardRenderAnnotation] = []
+        for control in LAYER_CONTROLS:
+            if not self.layer_checkboxes[control.id].isChecked():
+                continue
+            if control.id == "scale":
+                scale_result = evaluate_scale(STANDARD_BOARD, root, named.id)
+                annotations.extend(render_scale_result(scale_result))
+            elif control.id == "interval":
+                interval_result = evaluate_intervals(STANDARD_BOARD, root)
+                annotations.extend(render_interval_result(interval_result))
+        return tuple(annotations)

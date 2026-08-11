@@ -237,23 +237,42 @@ class TestMainWindowSelectors:
             assert 0 <= annotation.position.fret <= 12
 
 
-class TestIntervalsCheckbox:
-    def test_defaults_to_hidden(self, qapp: QApplication) -> None:
+class TestLayerCheckboxes:
+    def test_checkboxes_are_derived_from_controls(self, qapp: QApplication) -> None:
         window = MainWindow()
-        assert window.intervals_checkbox.isChecked() is False
+        assert list(window.layer_checkboxes) == ["scale", "interval"]
+        assert window.layer_checkboxes["scale"].text() == "Scale"
+        assert window.layer_checkboxes["interval"].text() == "Intervals"
+
+    def test_defaults_are_scale_on_and_intervals_off(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window.layer_checkboxes["scale"].isChecked() is True
+        assert window.layer_checkboxes["interval"].isChecked() is False
         assert all(
             annotation.role in (RenderRole.SCALE_ROOT, RenderRole.SCALE_TONE)
             for annotation in window.fretboard_widget.annotations
         )
 
-    def test_enabling_evaluates_and_displays_interval_annotations(self, qapp: QApplication) -> None:
+    def test_disabling_scale_removes_scale_annotations(self, qapp: QApplication) -> None:
         window = MainWindow()
-        window.intervals_checkbox.setChecked(True)
-        assert window.intervals_checkbox.isChecked() is True
+        window.layer_checkboxes["scale"].setChecked(False)
+        assert window.fretboard_widget.annotations == ()
+
+    def test_enabling_intervals_adds_interval_annotations(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        expected = render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
+        ) + render_interval_result(evaluate_intervals(STANDARD_BOARD, PitchClass.A))
+        assert window.fretboard_widget.annotations == expected
         assert any(
             annotation.role in (RenderRole.INTERVAL, RenderRole.INTERVAL_ROOT)
             for annotation in window.fretboard_widget.annotations
         )
+
+    def test_both_layers_enabled_preserves_combined_behavior(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
         expected = render_scale_result(
             evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
         ) + render_interval_result(evaluate_intervals(STANDARD_BOARD, PitchClass.A))
@@ -261,20 +280,40 @@ class TestIntervalsCheckbox:
         pixmap = window.fretboard_widget.grab()
         assert not pixmap.isNull()
 
-    def test_changing_root_updates_enabled_interval_results(self, qapp: QApplication) -> None:
+    def test_both_layers_disabled_produces_empty_annotation_tuple(self, qapp: QApplication) -> None:
         window = MainWindow()
-        window.intervals_checkbox.setChecked(True)
+        window.layer_checkboxes["scale"].setChecked(False)
+        window.layer_checkboxes["interval"].setChecked(False)
+        assert window.fretboard_widget.annotations == ()
+        pixmap = window.fretboard_widget.grab()
+        assert not pixmap.isNull()
+
+    def test_changing_root_updates_all_enabled_layers(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
         window.root_selector.setCurrentIndex(0)  # C
         expected = render_scale_result(
             evaluate_scale(STANDARD_BOARD, PitchClass.C, "minor_pentatonic")
         ) + render_interval_result(evaluate_intervals(STANDARD_BOARD, PitchClass.C))
         assert window.fretboard_widget.annotations == expected
 
+    def test_changing_scale_while_scale_disabled_does_not_enable_it(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        dorian_index = next(
+            i for i, named in enumerate(available_scale_formulas()) if named.id == "dorian"
+        )
+        window.scale_selector.setCurrentIndex(dorian_index)
+        assert window.layer_checkboxes["scale"].isChecked() is False
+        assert window.fretboard_widget.annotations == ()
+
     def test_changing_scale_keeps_interval_layer_and_updates_scale(
         self, qapp: QApplication
     ) -> None:
         window = MainWindow()
-        window.intervals_checkbox.setChecked(True)
+        window.layer_checkboxes["interval"].setChecked(True)
         dorian_index = next(
             i for i, named in enumerate(available_scale_formulas()) if named.id == "dorian"
         )
@@ -283,3 +322,27 @@ class TestIntervalsCheckbox:
             evaluate_scale(STANDARD_BOARD, PitchClass.A, "dorian")
         ) + render_interval_result(evaluate_intervals(STANDARD_BOARD, PitchClass.A))
         assert window.fretboard_widget.annotations == expected
+
+    def test_re_enabling_scale_uses_the_currently_selected_scale(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        dorian_index = next(
+            i for i, named in enumerate(available_scale_formulas()) if named.id == "dorian"
+        )
+        window.scale_selector.setCurrentIndex(dorian_index)
+        assert window.fretboard_widget.annotations == ()
+        window.layer_checkboxes["scale"].setChecked(True)
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "dorian")
+        )
+
+    def test_headless_rendering_of_all_enabled_states(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert not window.fretboard_widget.grab().isNull()  # scale only
+        window.layer_checkboxes["interval"].setChecked(True)
+        assert not window.fretboard_widget.grab().isNull()  # both
+        window.layer_checkboxes["scale"].setChecked(False)
+        assert not window.fretboard_widget.grab().isNull()  # intervals only
+        window.layer_checkboxes["interval"].setChecked(False)
+        assert not window.fretboard_widget.grab().isNull()  # neither
+        assert window.fretboard_widget.annotations == ()
