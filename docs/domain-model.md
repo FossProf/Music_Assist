@@ -173,6 +173,40 @@ scale_formula_by_id("dorian")  # the Dorian entry
 - No aliases, fuzzy search, localization, user-defined catalogs, persistence,
   or categories yet.
 
+## Triad, TriadTone, TriadQuality
+
+The pure theory model of a triad: what a triad *is* (root, quality, chord-tone
+identities, resulting pitch classes), with **no guitar voicing, string, fret,
+or fingering data**. Fretboard logic is deliberately excluded for now.
+
+```python
+from guitar_app.core.theory.triad import Triad, TriadQuality
+
+Triad(PitchClass.C, TriadQuality.MAJOR).tones
+# (TriadTone(1, C), TriadTone(3, E), TriadTone(5, G))
+```
+
+- `TriadQuality` — the four qualities, each with its chord-tone formula
+  (`1 3 5`, `1 b3 5`, `1 b3 b5`, `1 3 #5`). Formulas reuse `ScaleFormula` so
+  chord tones keep their `ScaleDegree` identities (diminished `b5` vs
+  augmented `#5` stay distinct spellings). The formula lives in the immutable
+  enum value and is exposed via read-only properties; quality/formula data
+  cannot be mutated.
+- `TriadTone(degree, pitch_class)` — a chord-tone identity bound to the pitch
+  class it resolves to.
+- `Triad(root, quality)` — derives ordered `tones` from the quality formula as
+  `(root + degree chromatic offset) mod 12`, and exposes ordered
+  `pitch_classes` and `degrees`. Root transposition is just constructing the
+  same quality on another root.
+- Examples: C major `1 C / 3 E / 5 G`, A minor `1 A / b3 C / 5 E`, B
+  diminished `1 B / b3 D / b5 F`, C augmented `1 C / 3 E / #5 G#`. Enharmonic
+  spelling stays normalized through `PitchClass`; degree identity preserves
+  theoretical intent.
+- **Inversions are deferred.** A `TriadInversion` enum (root/first/second
+  position) would represent tone *ordering only* without octave or register
+  data, which is premature until voicing context exists; reordering tones
+  without registers risks implying a bass note that cannot yet be modeled.
+
 ## GuitarString
 
 A single string identified by its conventional number (1 = highest/thinnest,
