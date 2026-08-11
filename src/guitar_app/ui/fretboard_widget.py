@@ -17,14 +17,17 @@ from PySide6.QtGui import (
     QPainter,
     QPaintEvent,
     QPen,
+    QPolygonF,
 )
 from PySide6.QtWidgets import QWidget
 
 from guitar_app.core.fretboard.fretboard import Fretboard, FretPosition
+from guitar_app.core.theory.triad import TriadInversion
 from guitar_app.ui.geometry import FRET_MARKERS, FretboardGeometry, fretboard_geometry
 from guitar_app.ui.render_annotations import (
     FretboardRenderAnnotation,
     RenderRole,
+    TriadVoicingRenderGroup,
 )
 
 _BACKGROUND_COLOR = QColor("#ffffff")
@@ -45,26 +48,46 @@ _INTERVAL_ROOT_TEXT = QColor("#ffffff")
 _BADGE_FILL = QColor("#ffffff")
 _BADGE_TEXT = QColor("#4a3f33")
 _BADGE_OUTLINE = QColor("#8a7a6a")
+_TRIAD_FILL = QColor("#7db87d")
+_TRIAD_TEXT = QColor("#1d3a1d")
+_TRIAD_ROOT_FILL = QColor("#2f7d32")
+_TRIAD_ROOT_TEXT = QColor("#ffffff")
+_VOICING_GROUP_PEN = QColor("#4d8f4d")
+_VOICING_GROUP_FILL = QColor(70, 130, 70, 36)
 
 #: Fraction of a primary marker radius used for the secondary badge radius.
 _BADGE_SCALE = 0.55
 
+#: Badge offsets around a primary marker: up-right, down-right, up-left, down-left.
+_BADGE_OFFSETS: tuple[tuple[float, float], ...] = (
+    (1.0, -1.0),
+    (1.0, 1.0),
+    (-1.0, -1.0),
+    (-1.0, 1.0),
+)
+
+#: Compact inversion label drawn near an active voicing group.
+_VOICING_INVERSION_LABELS = {
+    TriadInversion.ROOT_POSITION: "R",
+    TriadInversion.FIRST_INVERSION: "1st",
+    TriadInversion.SECOND_INVERSION: "2nd",
+}
+
 _SCALE_ROLES = (RenderRole.SCALE_ROOT, RenderRole.SCALE_TONE)
-_INTERVAL_ROLES = (RenderRole.INTERVAL_ROOT, RenderRole.INTERVAL)
 
 
 @dataclass(frozen=True, slots=True)
 class _PositionPlan:
     """How one fretboard location will be painted.
 
-    ``primary`` is the centered marker; ``secondary`` (always an interval) is
-    drawn as a smaller offset badge so both annotations at a shared position
-    stay visible.
+    ``primary`` is the centered marker (the first annotation at the position in
+    deterministic layer order); every additional annotation is drawn as a small
+    offset badge so shared positions keep all annotations visible.
     """
 
     position: FretPosition
     primary: FretboardRenderAnnotation
-    secondary: FretboardRenderAnnotation | None
+    badges: tuple[FretboardRenderAnnotation, ...]
 
 
 class FretboardWidget(QWidget):
@@ -80,6 +103,7 @@ class FretboardWidget(QWidget):
         super().__init__(parent)
         self._fretboard: Fretboard | None = None
         self._annotations: tuple[FretboardRenderAnnotation, ...] = ()
+        self._voicing_group: TriadVoicingRenderGroup | None = None
         self.setMinimumSize(200, 120)
 
     @property
@@ -92,6 +116,11 @@ class FretboardWidget(QWidget):
         """The render annotations currently displayed (empty before data is set)."""
         return self._annotations
 
+    @property
+    def voicing_group(self) -> TriadVoicingRenderGroup | None:
+        """The active voicing group currently highlighted, or None."""
+        return self._voicing_group
+
     def set_annotations(
         self,
         fretboard: Fretboard,
@@ -100,6 +129,15 @@ class FretboardWidget(QWidget):
         """Display ``annotations`` on ``fretboard`` and schedule a repaint."""
         self._fretboard = fretboard
         self._annotations = annotations
+        self.update()
+
+    def set_voicing_group(self, group: TriadVoicingRenderGroup | None) -> None:
+        """Highlight ``group``'s three positions as one connected unit.
+
+        Only one voicing group is drawn at a time; pass ``None`` to draw no
+        grouping. Point annotations remain unaffected.
+        """
+        self._voicing_group = group
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:
@@ -112,17 +150,20 @@ class FretboardWidget(QWidget):
         self._draw_fret_lines(painter, geometry)
         self._draw_strings(painter, geometry)
         self._draw_fret_markers(painter, geometry)
+        if self._voicing_group is not None:
+            self._draw_voicing_group(painter, geometry, self._voicing_group)
         if self._annotations:
             self._draw_annotations(painter, geometry)
         painter.end()
 
     def _build_plan(self) -> tuple[_PositionPlan, ...]:
-        """Group annotations by position into primary/secondary paint plans.
+        """Group annotations by position into primary/badge paint plans.
 
-        Scale annotations (root and scale tones) take the primary, centered
-        marker; an interval at the same position becomes a smaller secondary
-        badge so neither annotation is discarded. Positions with only an
-        interval render it as a normal primary marker.
+        Annotations arrive in deterministic layer order (scale, then interval,
+        then triad), so the first annotation at a position becomes the centered
+        primary marker and every additional one becomes a smaller offset badge
+        — no annotation is discarded, regardless of how many layers share a
+        position.
         """
         by_position: dict[FretPosition, list[FretboardRenderAnnotation]] = {}
         for annotation in self._annotations:
@@ -130,21 +171,9 @@ class FretboardWidget(QWidget):
 
         plans: list[_PositionPlan] = []
         for position, position_annotations in by_position.items():
-            scale = [
-                annotation for annotation in position_annotations if annotation.role in _SCALE_ROLES
-            ]
-            intervals = [
-                annotation
-                for annotation in position_annotations
-                if annotation.role in _INTERVAL_ROLES
-            ]
-            if scale:
-                primary = scale[0]
-                secondary = intervals[0] if intervals else None
-            else:
-                primary = intervals[0]
-                secondary = None
-            plans.append(_PositionPlan(position, primary, secondary))
+            primary = position_annotations[0]
+            badges = tuple(position_annotations[1:])
+            plans.append(_PositionPlan(position, primary, badges))
         return tuple(plans)
 
     def _draw_fret_lines(self, painter: QPainter, geometry: FretboardGeometry) -> None:
@@ -200,8 +229,8 @@ class FretboardWidget(QWidget):
         for plan in plans:
             self._draw_primary(painter, geometry, plan.primary, radius)
         for plan in plans:
-            if plan.secondary is not None:
-                self._draw_secondary(painter, geometry, plan.secondary, badge_radius, radius)
+            for badge_index, badge in enumerate(plan.badges):
+                self._draw_badge(painter, geometry, badge, badge_radius, radius, badge_index)
 
     def _draw_primary(
         self,
@@ -234,6 +263,11 @@ class FretboardWidget(QWidget):
             painter.setPen(QPen(Qt.PenStyle.NoPen))
             painter.drawEllipse(center, radius, radius)
             painter.setPen(QPen(_INTERVAL_ROOT_TEXT))
+        elif annotation.role is RenderRole.TRIAD_ROOT:
+            painter.setBrush(QBrush(_TRIAD_ROOT_FILL))
+            painter.setPen(QPen(Qt.PenStyle.NoPen))
+            painter.drawEllipse(center, radius, radius)
+            painter.setPen(QPen(_TRIAD_ROOT_TEXT))
         else:
             painter.setBrush(QBrush(_INTERVAL_FILL))
             painter.setPen(QPen(Qt.PenStyle.NoPen))
@@ -250,17 +284,19 @@ class FretboardWidget(QWidget):
             annotation.label,
         )
 
-    def _draw_secondary(
+    def _draw_badge(
         self,
         painter: QPainter,
         geometry: FretboardGeometry,
         annotation: FretboardRenderAnnotation,
         badge_radius: float,
         primary_radius: float,
+        badge_index: int,
     ) -> None:
         center = self._center(geometry, annotation.position)
         offset = primary_radius * 0.35 + badge_radius * 0.5
-        badge_center = center + QPointF(offset, -offset)
+        dx, dy = _BADGE_OFFSETS[badge_index % len(_BADGE_OFFSETS)]
+        badge_center = center + QPointF(offset * dx, offset * dy)
         painter.setBrush(QBrush(_BADGE_FILL))
         painter.setPen(QPen(_BADGE_OUTLINE, 1.0))
         painter.drawEllipse(badge_center, badge_radius, badge_radius)
@@ -278,6 +314,45 @@ class FretboardWidget(QWidget):
             int(Qt.AlignmentFlag.AlignCenter),
             annotation.label,
         )
+
+    def _draw_voicing_group(
+        self,
+        painter: QPainter,
+        geometry: FretboardGeometry,
+        group: TriadVoicingRenderGroup,
+    ) -> None:
+        """Draw the active voicing as a subtle triangle linking its three points.
+
+        The connecting polygon is drawn before the point annotations and uses a
+        translucent fill plus a thin outline, so it encloses the three
+        positions without obscuring their labels. A small inversion label (R /
+        1st / 2nd) sits at the triangle's centroid.
+        """
+        centers = [self._center(geometry, position) for position in group.positions]
+        polygon = QPolygonF(centers)
+        painter.save()
+        painter.setPen(QPen(_VOICING_GROUP_PEN, 1.5))
+        painter.setBrush(QBrush(_VOICING_GROUP_FILL))
+        painter.drawPolygon(polygon)
+        centroid = QPointF(
+            sum(point.x() for point in centers) / len(centers),
+            sum(point.y() for point in centers) / len(centers),
+        )
+        font = painter.font()
+        font.setPixelSize(max(8, int(geometry.row_height * 0.4)))
+        painter.setFont(font)
+        painter.setPen(QPen(_VOICING_GROUP_PEN))
+        painter.drawText(
+            QRectF(
+                centroid.x() - 24,
+                centroid.y() - 10,
+                48,
+                20,
+            ),
+            int(Qt.AlignmentFlag.AlignCenter),
+            _VOICING_INVERSION_LABELS[group.inversion],
+        )
+        painter.restore()
 
     def _center(self, geometry: FretboardGeometry, position: FretPosition) -> QPointF:
         return QPointF(

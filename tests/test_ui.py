@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import inspect
 from pathlib import Path
 
@@ -10,17 +11,27 @@ from PySide6.QtWidgets import QApplication
 
 from guitar_app.core.fretboard.fretboard import Fretboard, FretPosition
 from guitar_app.core.instrument.tuning import STANDARD
+from guitar_app.core.layers.triad_layer import TriadLayerResult
 from guitar_app.core.theory.pitch import PitchClass
 from guitar_app.core.theory.scale_formulas import MINOR_PENTATONIC, SCALE_FORMULAS
+from guitar_app.core.theory.triad import TriadQuality
 from guitar_app.services.interval_service import evaluate_intervals
 from guitar_app.services.scale_service import available_scale_formulas, evaluate_scale
+from guitar_app.services.triad_service import (
+    available_triad_qualities,
+    evaluate_triad,
+)
+from guitar_app.ui import main_window as main_window_module
 from guitar_app.ui.fretboard_widget import FretboardWidget
 from guitar_app.ui.geometry import FRET_MARKERS, FretboardGeometry, fretboard_geometry
 from guitar_app.ui.main_window import STANDARD_BOARD, MainWindow
 from guitar_app.ui.render_annotations import (
     RenderRole,
+    TriadVoicingRenderGroup,
     render_interval_result,
     render_scale_result,
+    render_triad_result,
+    render_triad_voicings,
 )
 
 
@@ -142,9 +153,9 @@ class TestFretboardWidget:
         plans = {plan.position: plan for plan in widget._build_plan()}
         shared = plans[FretPosition(6, 0)]  # open E: scale fifth + interval fifth
         assert shared.primary.role is RenderRole.SCALE_TONE
-        assert shared.secondary is not None
-        assert shared.secondary.role is RenderRole.INTERVAL
-        assert shared.secondary.label == "5"
+        assert shared.badges
+        assert shared.badges[0].role is RenderRole.INTERVAL
+        assert shared.badges[0].label == "5"
 
     def test_shared_root_position_keeps_scale_root_primary_and_interval_root_secondary(
         self, qapp: QApplication
@@ -158,9 +169,9 @@ class TestFretboardWidget:
         shared = plans[FretPosition(6, 5)]  # 6th string fret 5 is an A root
         assert shared.primary.role is RenderRole.SCALE_ROOT
         assert shared.primary.label == "1"
-        assert shared.secondary is not None
-        assert shared.secondary.role is RenderRole.INTERVAL_ROOT
-        assert shared.secondary.label == "R"
+        assert shared.badges
+        assert shared.badges[0].role is RenderRole.INTERVAL_ROOT
+        assert shared.badges[0].label == "R"
 
     def test_interval_only_root_annotation_remains_visible_and_emphasized(
         self, qapp: QApplication
@@ -172,7 +183,7 @@ class TestFretboardWidget:
         root_plan = plans[FretPosition(6, 5)]  # interval-only A root position
         assert root_plan.primary.role is RenderRole.INTERVAL_ROOT
         assert root_plan.primary.label == "R"
-        assert root_plan.secondary is None
+        assert root_plan.badges == ()
         pixmap = widget.grab()
         assert not pixmap.isNull()
 
@@ -240,9 +251,10 @@ class TestMainWindowSelectors:
 class TestLayerCheckboxes:
     def test_checkboxes_are_derived_from_controls(self, qapp: QApplication) -> None:
         window = MainWindow()
-        assert list(window.layer_checkboxes) == ["scale", "interval"]
+        assert list(window.layer_checkboxes) == ["scale", "interval", "triad"]
         assert window.layer_checkboxes["scale"].text() == "Scale"
         assert window.layer_checkboxes["interval"].text() == "Intervals"
+        assert window.layer_checkboxes["triad"].text() == "Triads"
 
     def test_defaults_are_scale_on_and_intervals_off(self, qapp: QApplication) -> None:
         window = MainWindow()
@@ -416,3 +428,335 @@ class TestSelectionLabel:
         assert window.selection_label.text() == "C Intervals"  # intervals only
         window.layer_checkboxes["interval"].setChecked(False)
         assert window.selection_label.text() == "C — No layers"  # neither
+
+    def test_label_triad_only(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert window.selection_label.text() == "A Major Triads"
+
+    def test_label_triad_changes_with_quality(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.triad_quality_selector.setCurrentIndex(1)  # Minor
+        assert window.selection_label.text() == "A Minor Triads"
+
+
+class TestTriadQualitySelector:
+    def test_quality_selector_contains_all_qualities(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window.triad_quality_selector.count() == 4
+        assert [window.triad_quality_selector.itemText(i) for i in range(4)] == [
+            "Major",
+            "Minor",
+            "Diminished",
+            "Augmented",
+        ]
+        assert window.triad_quality_selector.count() == len(available_triad_qualities())
+
+    def test_default_quality_is_major(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window.triad_quality_selector.currentIndex() == 0
+        assert window.triad_quality_selector.currentText() == "Major"
+
+
+class TestTriadProjection:
+    def test_c_major_roles_and_labels(self) -> None:
+        result = evaluate_triad(STANDARD_BOARD, PitchClass.C, TriadQuality.MAJOR)
+        annotations = render_triad_result(result)
+        by_position = {annotation.position: annotation for annotation in annotations}
+        assert by_position[FretPosition(5, 3)].role is RenderRole.TRIAD_ROOT  # C3 root
+        assert by_position[FretPosition(5, 3)].label == "1"
+        assert by_position[FretPosition(6, 0)].role is RenderRole.TRIAD_TONE  # open E
+        assert by_position[FretPosition(6, 0)].label == "3"
+        assert by_position[FretPosition(6, 3)].role is RenderRole.TRIAD_TONE  # G2
+        assert by_position[FretPosition(6, 3)].label == "5"
+
+    def test_a_minor_flat_third_label(self) -> None:
+        result = evaluate_triad(STANDARD_BOARD, PitchClass.A, TriadQuality.MINOR)
+        by_position = {
+            annotation.position: annotation for annotation in render_triad_result(result)
+        }
+        assert by_position[FretPosition(5, 0)].role is RenderRole.TRIAD_ROOT  # open A2
+        assert by_position[FretPosition(5, 0)].label == "1"
+        assert by_position[FretPosition(5, 3)].role is RenderRole.TRIAD_TONE  # C3
+        assert by_position[FretPosition(5, 3)].label == "b3"
+
+    def test_c_augmented_sharp_fifth_label(self) -> None:
+        result = evaluate_triad(STANDARD_BOARD, PitchClass.C, TriadQuality.AUGMENTED)
+        labels = {annotation.label for annotation in render_triad_result(result)}
+        assert labels == {"1", "3", "#5"}
+
+    def test_projection_preserves_every_mapped_position(self) -> None:
+        result = evaluate_triad(STANDARD_BOARD, PitchClass.C, TriadQuality.MAJOR)
+        projected = render_triad_result(result)
+        assert len(projected) == len(result.annotations)
+        assert all(isinstance(annotation.role, RenderRole) for annotation in projected)
+
+    def test_projection_is_qt_free(self) -> None:
+        result = evaluate_triad(STANDARD_BOARD, PitchClass.C, TriadQuality.MAJOR)
+        annotations = render_triad_result(result)
+        assert all(
+            not hasattr(annotation, "color") and not hasattr(annotation, "rect")
+            for annotation in annotations
+        )
+
+
+class TestTriadVoicingGroupProjection:
+    def test_preserves_three_positions_and_inversion(self) -> None:
+        result = evaluate_triad(STANDARD_BOARD, PitchClass.C, TriadQuality.MAJOR)
+        groups = render_triad_voicings(result)
+        assert groups
+        assert len(groups) == len(result.voicings)
+        group = groups[0]
+        assert isinstance(group, TriadVoicingRenderGroup)
+        assert group.positions == tuple(tone.position for tone in result.voicings[0].tones)
+        assert group.string_set == result.voicings[0].string_set
+        assert group.inversion is result.voicings[0].inversion
+
+    def test_group_is_ui_only_and_immutable(self) -> None:
+        result = evaluate_triad(STANDARD_BOARD, PitchClass.C, TriadQuality.MAJOR)
+        group = render_triad_voicings(result)[0]
+        assert {field.name for field in dataclasses.fields(group)} == {
+            "positions",
+            "string_set",
+            "inversion",
+        }
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            group.positions = ()  # type: ignore[assignment, misc]
+
+    def test_domain_voicings_are_not_modified_by_projection(self) -> None:
+        result = evaluate_triad(STANDARD_BOARD, PitchClass.C, TriadQuality.MAJOR)
+        voicing = result.voicings[0]
+        render_triad_voicings(result)
+        assert voicing.string_set == result.voicings[0].string_set
+        assert voicing.inversion is result.voicings[0].inversion
+        assert tuple(tone.position for tone in voicing.tones) == tuple(
+            tone.position for tone in result.voicings[0].tones
+        )
+
+
+class TestTriadLayerCheckbox:
+    def test_triads_control_exists_and_defaults_off(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window.layer_checkboxes["triad"].isChecked() is False
+
+    def test_enabling_triads_adds_triad_point_annotations(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        expected = render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
+        ) + render_triad_result(evaluate_triad(STANDARD_BOARD, PitchClass.A, TriadQuality.MAJOR))
+        assert window.fretboard_widget.annotations == expected
+        assert any(
+            annotation.role in (RenderRole.TRIAD_ROOT, RenderRole.TRIAD_TONE)
+            for annotation in window.fretboard_widget.annotations
+        )
+
+    def test_disabling_triads_removes_them(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(False)
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
+        )
+        assert window.fretboard_widget.voicing_group is None
+
+    def test_changing_quality_updates_enabled_triads(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.triad_quality_selector.setCurrentIndex(1)  # Minor
+        expected = render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
+        ) + render_triad_result(evaluate_triad(STANDARD_BOARD, PitchClass.A, TriadQuality.MINOR))
+        assert window.fretboard_widget.annotations == expected
+        assert any(annotation.label == "b3" for annotation in window.fretboard_widget.annotations)
+
+    def test_changing_quality_while_disabled_does_not_enable_triads(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        window.triad_quality_selector.setCurrentIndex(2)  # Diminished
+        assert window.layer_checkboxes["triad"].isChecked() is False
+        assert all(
+            annotation.role not in (RenderRole.TRIAD_ROOT, RenderRole.TRIAD_TONE)
+            for annotation in window.fretboard_widget.annotations
+        )
+        assert window.fretboard_widget.voicing_group is None
+
+    def test_root_change_updates_triad_result(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.root_selector.setCurrentIndex(0)  # C
+        expected = render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.C, "minor_pentatonic")
+        ) + render_triad_result(evaluate_triad(STANDARD_BOARD, PitchClass.C, TriadQuality.MAJOR))
+        assert window.fretboard_widget.annotations == expected
+
+    def test_shared_position_retains_scale_interval_and_triad(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        plans = {plan.position: plan for plan in window.fretboard_widget._build_plan()}
+        shared = plans[FretPosition(6, 0)]  # open E: scale fifth + interval fifth + triad fifth
+        assert shared.primary.role is RenderRole.SCALE_TONE
+        assert len(shared.badges) == 2
+        assert {badge.role for badge in shared.badges} == {
+            RenderRole.INTERVAL,
+            RenderRole.TRIAD_TONE,
+        }
+
+    def test_headless_rendering_with_all_three_layers(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert not window.fretboard_widget.grab().isNull()
+        assert window.fretboard_widget.voicing_group is not None
+
+    def test_headless_rendering_each_triad_state(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert not window.fretboard_widget.grab().isNull()
+        window.triad_quality_selector.setCurrentIndex(1)  # Minor
+        assert not window.fretboard_widget.grab().isNull()
+        window.triad_quality_selector.setCurrentIndex(2)  # Diminished
+        assert not window.fretboard_widget.grab().isNull()
+        window.triad_quality_selector.setCurrentIndex(3)  # Augmented
+        assert not window.fretboard_widget.grab().isNull()
+
+
+class TestVoicingNavigation:
+    def test_default_active_group_is_first_voicing(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        expected_first = render_triad_voicings(
+            evaluate_triad(STANDARD_BOARD, PitchClass.A, TriadQuality.MAJOR)
+        )[0]
+        assert window.fretboard_widget.voicing_group == expected_first
+        assert window.voicing_label.text().startswith("Voicing 1 /")
+
+    def test_next_and_previous_step_through_voicings(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.next_voicing_button.click()
+        assert window.voicing_label.text().startswith("Voicing 2 /")
+        window.next_voicing_button.click()
+        assert window.voicing_label.text().startswith("Voicing 3 /")
+        window.previous_voicing_button.click()
+        assert window.voicing_label.text().startswith("Voicing 2 /")
+
+    def test_cycling_wraps_deterministically(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        count = len(window._triad_groups)
+        assert count >= 1
+        for _ in range(count - 1):
+            window.next_voicing_button.click()
+        assert window.voicing_label.text().startswith(f"Voicing {count} /")
+        window.next_voicing_button.click()
+        assert window.voicing_label.text().startswith("Voicing 1 /")  # wrapped forward
+        window.previous_voicing_button.click()
+        assert window.voicing_label.text().startswith(f"Voicing {count} /")  # wrapped backward
+
+    def test_voicing_label_describes_inversion_and_strings(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        count = len(window._triad_groups)
+        group = window._triad_groups[0]
+        assert window.voicing_label.text() == (
+            f"Voicing 1 / {count} — {group.inversion.display_name} — "
+            f"strings {'-'.join(str(string) for string in group.string_set)}"
+        )
+
+    def test_root_change_resets_active_voicing_to_first(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.next_voicing_button.click()
+        assert window.voicing_label.text().startswith("Voicing 2 /")
+        window.root_selector.setCurrentIndex(0)  # C
+        assert window.voicing_label.text().startswith("Voicing 1 /")
+
+    def test_quality_change_resets_active_voicing_to_first(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.next_voicing_button.click()
+        assert window.voicing_label.text().startswith("Voicing 2 /")
+        window.triad_quality_selector.setCurrentIndex(1)  # Minor
+        assert window.voicing_label.text().startswith("Voicing 1 /")
+
+    def test_toggling_unrelated_layers_preserves_active_voicing(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.next_voicing_button.click()
+        assert window.voicing_label.text().startswith("Voicing 2 /")
+        window.layer_checkboxes["interval"].setChecked(True)
+        assert window.voicing_label.text().startswith("Voicing 2 /")
+        window.layer_checkboxes["scale"].setChecked(False)
+        assert window.voicing_label.text().startswith("Voicing 2 /")
+        window.layer_checkboxes["scale"].setChecked(True)
+        assert window.voicing_label.text().startswith("Voicing 2 /")
+
+    def test_no_voicing_state(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        empty = TriadLayerResult("triad", "Triads", (), ())
+        monkeypatch.setattr(main_window_module, "evaluate_triad", lambda *args, **kwargs: empty)
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert window.voicing_label.text() == "No triad voicings"
+        assert window.fretboard_widget.voicing_group is None
+        assert window.previous_voicing_button.isEnabled() is False
+        assert window.next_voicing_button.isEnabled() is False
+
+    def test_no_voicing_state_keeps_point_annotations(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        real = evaluate_triad(STANDARD_BOARD, PitchClass.A, TriadQuality.MAJOR)
+        empty_voicings = TriadLayerResult("triad", "Triads", real.annotations, ())
+        monkeypatch.setattr(
+            main_window_module, "evaluate_triad", lambda *args, **kwargs: empty_voicings
+        )
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert window.voicing_label.text() == "No triad voicings"
+        assert any(
+            annotation.role in (RenderRole.TRIAD_ROOT, RenderRole.TRIAD_TONE)
+            for annotation in window.fretboard_widget.annotations
+        )
+        assert not window.fretboard_widget.grab().isNull()
+
+
+class TestVoicingGroupWidget:
+    def test_widget_accepts_voicing_group(self, qapp: QApplication) -> None:
+        result = evaluate_triad(STANDARD_BOARD, PitchClass.C, TriadQuality.MAJOR)
+        groups = render_triad_voicings(result)
+        widget = FretboardWidget()
+        widget.set_annotations(STANDARD_BOARD, render_triad_result(result))
+        widget.set_voicing_group(groups[0])
+        assert widget.voicing_group == groups[0]
+        pixmap = widget.grab()
+        assert not pixmap.isNull()
+
+    def test_widget_draws_group_without_altering_domain_objects(self, qapp: QApplication) -> None:
+        result = evaluate_triad(STANDARD_BOARD, PitchClass.C, TriadQuality.MAJOR)
+        voicing = result.voicings[0]
+        positions_before = tuple(tone.position for tone in voicing.tones)
+        groups = render_triad_voicings(result)
+        widget = FretboardWidget()
+        widget.set_annotations(STANDARD_BOARD, render_triad_result(result))
+        widget.set_voicing_group(groups[0])
+        pixmap = widget.grab()
+        assert not pixmap.isNull()
+        assert tuple(tone.position for tone in voicing.tones) == positions_before
+        assert voicing.inversion is result.voicings[0].inversion
+        assert groups[0].positions == positions_before
+
+    def test_widget_clears_voicing_group(self, qapp: QApplication) -> None:
+        result = evaluate_triad(STANDARD_BOARD, PitchClass.C, TriadQuality.MAJOR)
+        groups = render_triad_voicings(result)
+        widget = FretboardWidget()
+        widget.set_annotations(STANDARD_BOARD, render_triad_result(result))
+        widget.set_voicing_group(groups[0])
+        widget.set_voicing_group(None)
+        assert widget.voicing_group is None
+        assert not widget.grab().isNull()

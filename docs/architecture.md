@@ -152,32 +152,43 @@ data and service results, and performs no theory calculations.
 - `guitar_app.app` — the desktop entry point (`guitar-app` console script).
 - `ui.layer_controls` — the UI model of which overlays are visible.
   `LayerControl(id, name, default_enabled)` plus `LAYER_CONTROLS`, the
-  available overlays in deterministic order (`scale` enabled, `interval`
-  disabled). IDs match the corresponding core layer IDs. Deliberately free of
-  PySide6 and carries no widgets, callbacks, services, or layer objects; the
-  MainWindow derives its checkboxes from these definitions.
-- `ui.main_window.MainWindow` — the main window: root and scale selectors, one
-  checkbox per `LAYER_CONTROLS` entry, a current-selection label, and the
-  fretboard widget. On any selection/toggle change it evaluates **only the
-  enabled** layers (an explicit branch per known UI layer — no generic
-  dispatcher), projects each result into render annotations, combines them in
-  control order, and hands the immutable collection to the widget; disabling
-  every layer is a supported empty state, and service/domain errors are
-  translated into a status-bar message.
-- `ui.render_annotations` — the UI projection boundary. `FretboardRenderAnnotation`
-  (`position`, `label`, `role`) plus `render_scale_result` and
-  `render_interval_result` that convert each concrete layer result into render
-  annotations. It is deliberately free of PySide6 so the projection rules are
+  available overlays in deterministic order (`scale` enabled, `interval` and
+  `triad` disabled). IDs match the corresponding core layer IDs. Deliberately
+  free of PySide6 and carries no widgets, callbacks, services, or layer
+  objects; the MainWindow derives its checkboxes from these definitions.
+- `ui.main_window.MainWindow` — the main window: root, scale, and triad-quality
+  selectors, one checkbox per `LAYER_CONTROLS` entry, Previous/Next voicing
+  controls, a current-selection label, a voicing label, and the fretboard
+  widget. On any selection/toggle change it evaluates **only the enabled**
+  layers (an explicit branch per known UI layer — no generic dispatcher),
+  projects each result into render annotations, combines them in control
+  order, and hands the immutable collection plus the currently active voicing
+  group to the widget; disabling every layer is a supported empty state, and
+  service/domain errors are translated into a status-bar message. The active
+  voicing index resets to the first voicing only when the triad result
+  changes (root or quality), and wraps modulo the group count when cycling;
+  toggling unrelated layers preserves it.
+- `ui.render_annotations` — the UI projection boundary.
+  `FretboardRenderAnnotation` (`position`, `label`, `role`) plus
+  `render_scale_result`, `render_interval_result`, and `render_triad_result`
+  that convert each concrete layer result into render annotations; and
+  `TriadVoicingRenderGroup` (`positions`, `string_set`, `inversion`) plus
+  `render_triad_voicings` that project detected voicings into UI-only grouping
+  data. It is deliberately free of PySide6 so the projection rules are
   unit-testable without a display; it carries presentation roles but never
   colors, pixel coordinates, fonts, or painter objects.
 - `ui.fretboard_widget.FretboardWidget` — a `QWidget` + `QPainter` canvas that
-  paints a `tuple[FretboardRenderAnnotation, ...]` on a fretboard; it knows
-  nothing about scale- or interval-domain annotation types. It draws strings,
-  frets (with a distinct nut), inlaid fret markers at 3/5/7/9/12, and markers
-  for the annotations; open-string (fret 0) markers are hollow rings to keep
-  fret 0 unambiguous. When a scale annotation and an interval annotation share
-  a position, the scale annotation is the centered primary marker and the
-  interval is a smaller offset badge, so neither is discarded.
+  paints a `tuple[FretboardRenderAnnotation, ...]` on a fretboard and
+  optionally highlights one `TriadVoicingRenderGroup`; it knows nothing about
+  scale-, interval-, or triad-domain annotation types. It draws strings, frets
+  (with a distinct nut), inlaid fret markers at 3/5/7/9/12, and markers for
+  the annotations; open-string (fret 0) markers are hollow rings to keep fret
+  0 unambiguous. When multiple annotations share a position, the first in
+  layer order (scale, then interval, then triad) is the centered primary
+  marker and every additional one is a smaller offset badge arranged around
+  it, so no annotation is discarded. The active voicing group is drawn as a
+  subtle translucent triangle linking its three positions (before the point
+  labels, so they stay readable) with a compact inversion label (R/1st/2nd).
 - `ui.geometry` — UI-only layout math mapping domain `(string_number, fret)`
   pairs to widget coordinates. It is deliberately free of PySide6 so the
   coordinate mapping is unit-testable without a display; pixel coordinates are

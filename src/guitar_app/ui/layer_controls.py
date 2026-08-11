@@ -30,4 +30,5 @@ class LayerControl:
 LAYER_CONTROLS: tuple[LayerControl, ...] = (
     LayerControl("scale", "Scale", True),
     LayerControl("interval", "Intervals", False),
+    LayerControl("triad", "Triads", False),
 )

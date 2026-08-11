@@ -13,18 +13,31 @@ from guitar_app.ui.layer_controls import LAYER_CONTROLS, LayerControl
 
 class TestLayerControlDefinitions:
     def test_controls_exist_in_deterministic_order(self) -> None:
-        assert [control.id for control in LAYER_CONTROLS] == ["scale", "interval"]
+        assert [control.id for control in LAYER_CONTROLS] == [
+            "scale",
+            "interval",
+            "triad",
+        ]
 
     def test_names_match_the_user_facing_labels(self) -> None:
-        assert [control.name for control in LAYER_CONTROLS] == ["Scale", "Intervals"]
+        assert [control.name for control in LAYER_CONTROLS] == [
+            "Scale",
+            "Intervals",
+            "Triads",
+        ]
 
     def test_ids_match_core_layer_ids(self) -> None:
-        assert [control.id for control in LAYER_CONTROLS] == ["scale", "interval"]
+        assert [control.id for control in LAYER_CONTROLS] == [
+            "scale",
+            "interval",
+            "triad",
+        ]
 
     def test_defaults_are_scale_on_and_intervals_off(self) -> None:
         by_id = {control.id: control for control in LAYER_CONTROLS}
         assert by_id["scale"].default_enabled is True
         assert by_id["interval"].default_enabled is False
+        assert by_id["triad"].default_enabled is False
 
     def test_controls_are_immutable(self) -> None:
         control = LAYER_CONTROLS[0]
