@@ -89,6 +89,12 @@ never rendering questions ("which color should this position be?").
 - `IntervalLayer` (`id="interval"`, `name="Intervals"`) — annotates every
   fretboard position with its root-relative chromatic interval; it delegates to
   `map_intervals_to_fretboard`.
+- `TriadLayer` (`id="triad"`, `name="Triads"`) — exposes a concrete triad:
+  every triad-tone position plus the detected adjacent-string voicings; it
+  delegates to `map_triad_to_fretboard` and `find_triad_voicings`. It returns a
+  richer `TriadLayerResult` (annotations **and** voicings) and therefore does
+  **not** satisfy the `Layer` protocol; the generic abstraction is left
+  unchanged (see "How fretboard layers work").
 
 Each concrete layer owns the inputs it requires (no universal `LayerContext`).
 Layers produce structured annotations only; rendering is always the UI's job.
@@ -270,6 +276,16 @@ class Layer(Protocol[P, T]):
   (`id="interval"`, `name="Intervals"`), which delegates to
   `map_intervals_to_fretboard` and annotates every fretboard position with its
   root-relative chromatic interval.
+- `TriadLayer` (`id="triad"`, `name="Triads"`) deliberately returns a richer
+  result: `TriadLayerResult` carries both `annotations`
+  (`map_triad_to_fretboard` output) and `voicings`
+  (`find_triad_voicings` output). Because the payload is two heterogeneous
+  tuples, `TriadLayerResult` is **not** a `LayerResult[T]` and `TriadLayer`
+  does **not** satisfy the `Layer` protocol. This is an intentional,
+  documented divergence: the UI needs both datasets from one evaluation, and
+  the generic `Layer` abstraction is left unchanged until a redesign is
+  agreed on. UI code can branch on `layer_id == "triad"` to consume the
+  richer result.
 
 Example: the *IntervalLayer* evaluated with root A returns, for every position,
 the chromatic displacement from A. A *ChordToneLayer* for Am returns which

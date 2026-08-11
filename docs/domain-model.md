@@ -437,6 +437,16 @@ layer. It is stateless: the fretboard and root are supplied at evaluation time,
 and its result preserves the `IntervalFretboardPosition` data by delegating to
 `map_intervals_to_fretboard`.
 
+`TriadLayer` (`id="triad"`, `name="Triads"`) is the third layer. It is
+stateless: the fretboard, triad, and optional `max_fret_span` are supplied at
+evaluation time. It returns a `TriadLayerResult` — layer metadata plus both
+`annotations` (`TriadFretboardPosition` per chord tone) and `voicings`
+(`TriadVoicing` per detected adjacent-string voicing), delegating to
+`map_triad_to_fretboard` and `find_triad_voicings`. The result is frozen and
+contains no rendering fields. It intentionally does **not** satisfy the generic
+`Layer` protocol because its payload is two heterogeneous tuples; see
+`docs/architecture.md`.
+
 ## Planned concepts
 
 The same style of typed value object will be used for:
