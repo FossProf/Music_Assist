@@ -9,7 +9,7 @@ The direction of dependency is:
 UI / application      (PySide6, planned)
         |
         v
-services              (application services, planned)
+services              (application services)
         |
         v
 core engines          (theory, instrument, fretboard)
@@ -90,6 +90,21 @@ never rendering questions ("which color should this position be?").
 Each concrete layer owns the inputs it requires (no universal `LayerContext`).
 Layers produce structured annotations only; rendering is always the UI's job.
 
+### services — application services
+
+Typed operations that orchestrate the core engines on behalf of the UI. The UI
+does not search the catalog, construct `Scale`, or coordinate layers directly;
+it calls a service and receives a ready-to-render `LayerResult`.
+
+- `evaluate_scale(fretboard, root, scale_id)` — resolves the ID via
+  `scale_formula_by_id`, builds `Scale(root, formula)`, and returns the
+  evaluated `ScaleLayer` result. Unknown IDs propagate
+  `UnknownScaleFormulaError` to the caller.
+- `available_scale_formulas()` — the catalog's named formulas in stable order,
+  for populating a scale selector.
+
+Services depend on `core`; **`core` never imports `services`**.
+
 ### cli (temporary)
 
 A development-only command-line harness that prints the fretboard and its
@@ -109,7 +124,8 @@ by the PySide6 application.
 - **ui** — the PySide6 desktop application, including a custom fretboard
   widget that consumes structured domain data and owns all rendering.
 - **services** — application-level services that orchestrate the core engines
-  on behalf of the UI.
+  on behalf of the UI. `evaluate_scale` and `available_scale_formulas` are
+  implemented; more operations (chord tones, progressions) will be added.
 
 ## Domain boundaries
 
@@ -121,6 +137,7 @@ by the PySide6 application.
 | Fretboard, positions   | core.fretboard       | core.theory, core.instrument |
 | Scale↔fretboard mapping| core.fretboard       | core.theory, core.instrument |
 | Layers                 | core.layers          | theory, instrument, fretboard |
+| Services               | services             | core engines (any)       |
 | Progression (planned)  | core.progression     | theory, fretboard       |
 | Audio (planned)        | core.audio           | core.theory (for pitch names) |
 | UI (planned)           | ui                   | everything above, via services |
@@ -128,6 +145,8 @@ by the PySide6 application.
 Hard rules:
 
 - `core.*` never imports `guitar_app.ui` or any GUI library.
+- `core.*` never imports `guitar_app.services`; dependency flows one way,
+  UI → services → core.
 - `core.fretboard` returns domain objects; it contains no drawing code.
 - Domain errors are raised as domain exceptions (`InvalidPitchError`,
   `InvalidTuningError`, `InvalidPositionError`) and translated into
