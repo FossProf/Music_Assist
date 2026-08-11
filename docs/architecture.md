@@ -136,6 +136,35 @@ triad layer takes `root` + `quality`);
 no generic multi-layer dispatcher exists yet, so UI composition decides which
 service to call.
 
+### services.instrument_state — active-instrument configuration
+
+`InstrumentState` is the immutable application-level state for the active
+fretboard — the future source of the active `Fretboard` for the UI, persistence,
+and AI/API access. It bridges the tuning preset catalog to the fretboard:
+
+```
+tuning preset catalog -> InstrumentState -> Fretboard -> services/layers
+```
+
+- `InstrumentState(tuning, fret_count, tuning_id=None, display_name=None)` —
+  frozen; holds the active `Tuning`, the fret count, and optionally the preset
+  identity (`tuning_id`) and a user-facing `display_name`. `fret_count` follows
+  `Fretboard` semantics (>= 0, raising `InvalidPositionError`); no six-string
+  requirement.
+- `state.fretboard` — derives a fresh `Fretboard(state.tuning, state.fret_count)`
+  on each access; nothing is cached so the state stays immutable.
+- `instrument_from_tuning_id(tuning_id, *, fret_count=22)` — resolves the ID via
+  `tuning_by_id` and preserves the preset ID and display name. Unknown IDs
+  propagate `UnknownTuningError`.
+- `DEFAULT_INSTRUMENT_STATE` — the canonical application default: Standard
+  tuning, 22 frets.
+- Custom tunings are first-class: `InstrumentState(tuning=some_custom_tuning,
+  fret_count=24)` needs no catalog registration, so `tuning_id`/`display_name`
+  are optional.
+
+`InstrumentState` is **not yet persistent** and **not UI state**. Existing
+musical services keep accepting a `Fretboard` and never depend on it.
+
 Services depend on `core`; **`core` never imports `services`**.
 
 **Standing objective — AI/agent access.** User-facing musical operations are
@@ -246,6 +275,7 @@ application is the primary entry point (`guitar-app`).
 | Interval↔fretboard map.| core.fretboard       | core.theory, core.instrument |
 | Layers                 | core.layers          | theory, instrument, fretboard |
 | Services               | services             | core engines (any)       |
+| InstrumentState        | services             | core.instrument, core.fretboard |
 | Layer controls         | ui.layer_controls     | nothing (UI model)       |
 | Render annotations     | ui.render_annotations | core.layers, core.fretboard |
 | Rendering geometry     | ui.geometry          | core.fretboard (coords)  |

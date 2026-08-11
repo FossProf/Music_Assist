@@ -121,12 +121,13 @@ src/guitar_app/
     core/            # UI-agnostic engines
         theory/      # PitchClass, Pitch, ChromaticInterval, Scale, ScaleDegree,
                      #   Triad, TriadQuality, TriadTone, TriadInversion
-        instrument/  # GuitarString, Tuning, standard preset
+        instrument/  # GuitarString, Tuning, tuning presets, standard preset
         fretboard/   # Fretboard, FretPosition, scale & interval & triad mappings,
                      #   triad voicing detection
         layers/      # Layer contract, LayerResult, ScaleLayer, IntervalLayer,
                      #   TriadLayer, TriadLayerResult
-    services/        # application services orchestrating the core (Qt-free)
+    services/        # application services orchestrating the core (Qt-free),
+                     #   plus InstrumentState (active-instrument config)
     ui/              # PySide6 app: layer controls, render annotations,
                      #   main window, fretboard widget
     cli.py           # development-only CLI harness
