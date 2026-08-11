@@ -1,8 +1,9 @@
-"""Main window: root and scale selectors plus the fretboard widget."""
+"""Main window: root and scale selectors, an intervals toggle, and the fretboard widget."""
 
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -16,8 +17,14 @@ from guitar_app.core.fretboard.fretboard import Fretboard
 from guitar_app.core.instrument.tuning import STANDARD
 from guitar_app.core.theory.pitch import PitchClass
 from guitar_app.core.theory.scale_formulas import MINOR_PENTATONIC, NamedScaleFormula
+from guitar_app.services.interval_service import evaluate_intervals
 from guitar_app.services.scale_service import available_scale_formulas, evaluate_scale
 from guitar_app.ui.fretboard_widget import FretboardWidget
+from guitar_app.ui.render_annotations import (
+    FretboardRenderAnnotation,
+    render_interval_result,
+    render_scale_result,
+)
 
 #: The fixed fretboard shown in this first vertical slice.
 STANDARD_BOARD = Fretboard(STANDARD, 12)
@@ -26,8 +33,9 @@ STANDARD_BOARD = Fretboard(STANDARD, 12)
 class MainWindow(QMainWindow):
     """The application's main window.
 
-    Owns the root/scale selectors and the fretboard widget. It calls the scale
-    service and hands the evaluated ``LayerResult`` to the widget; it never
+    Owns the root/scale selectors, an intervals checkbox, and the fretboard
+    widget. It calls the scale and interval services and projects the results
+    into render annotations before handing them to the widget; it never
     constructs scale formulas or performs interval calculations itself.
     """
 
@@ -39,6 +47,7 @@ class MainWindow(QMainWindow):
 
         self.root_selector = QComboBox()
         self.scale_selector = QComboBox()
+        self.intervals_checkbox = QCheckBox("Intervals")
         self.selection_label = QLabel()
         self.fretboard_widget = FretboardWidget()
 
@@ -64,6 +73,7 @@ class MainWindow(QMainWindow):
         selectors_layout.addWidget(self.root_selector)
         selectors_layout.addWidget(QLabel("Scale:"))
         selectors_layout.addWidget(self.scale_selector)
+        selectors_layout.addWidget(self.intervals_checkbox)
         selectors_layout.addWidget(self.selection_label)
         selectors_layout.addStretch(1)
 
@@ -79,15 +89,16 @@ class MainWindow(QMainWindow):
     def _connect_selectors(self) -> None:
         self.root_selector.currentIndexChanged.connect(self._update_fretboard)
         self.scale_selector.currentIndexChanged.connect(self._update_fretboard)
+        self.intervals_checkbox.toggled.connect(self._update_fretboard)
 
     def _update_fretboard(self, *_args: object) -> None:
-        """Re-evaluate the scale service for the current selection and redraw."""
+        """Re-evaluate the active layers for the current selection and redraw."""
         if self.root_selector.currentIndex() < 0 or self.scale_selector.currentIndex() < 0:
             return
         named = self._scale_formulas[self.scale_selector.currentIndex()]
         root = self._pitch_classes[self.root_selector.currentIndex()]
         try:
-            result = evaluate_scale(STANDARD_BOARD, root, named.id)
+            scale_result = evaluate_scale(STANDARD_BOARD, root, named.id)
         except (UnknownScaleFormulaError, InvalidScaleDegreeError) as exc:
             self.statusBar().showMessage(
                 f"Could not evaluate {root.spelling()} {named.name}: {exc}"
@@ -95,4 +106,9 @@ class MainWindow(QMainWindow):
             return
         self.statusBar().clearMessage()
         self.selection_label.setText(f"{root.spelling()} {named.name}")
-        self.fretboard_widget.set_fretboard_data(STANDARD_BOARD, result)
+
+        annotations: list[FretboardRenderAnnotation] = list(render_scale_result(scale_result))
+        if self.intervals_checkbox.isChecked():
+            interval_result = evaluate_intervals(STANDARD_BOARD, root)
+            annotations.extend(render_interval_result(interval_result))
+        self.fretboard_widget.set_annotations(STANDARD_BOARD, tuple(annotations))

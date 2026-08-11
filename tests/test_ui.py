@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
+import inspect
+from pathlib import Path
+
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from guitar_app.core.fretboard.fretboard import Fretboard
-from guitar_app.core.fretboard.scale_mapping import ScaleFretboardPosition
+from guitar_app.core.fretboard.fretboard import Fretboard, FretPosition
 from guitar_app.core.instrument.tuning import STANDARD
-from guitar_app.core.layers.base import LayerResult
 from guitar_app.core.theory.pitch import PitchClass
 from guitar_app.core.theory.scale_formulas import MINOR_PENTATONIC, SCALE_FORMULAS
+from guitar_app.services.interval_service import evaluate_intervals
 from guitar_app.services.scale_service import available_scale_formulas, evaluate_scale
 from guitar_app.ui.fretboard_widget import FretboardWidget
 from guitar_app.ui.geometry import FRET_MARKERS, FretboardGeometry, fretboard_geometry
 from guitar_app.ui.main_window import STANDARD_BOARD, MainWindow
+from guitar_app.ui.render_annotations import (
+    RenderRole,
+    render_interval_result,
+    render_scale_result,
+)
 
 
 class TestFretboardGeometry:
@@ -68,39 +75,83 @@ class TestFretboardGeometry:
 
 
 class TestFretboardWidget:
-    def test_accepts_layer_result_data(self, qapp: QApplication) -> None:
+    def test_accepts_render_annotations(self, qapp: QApplication) -> None:
         widget = FretboardWidget()
-        result = evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
-        widget.set_fretboard_data(STANDARD_BOARD, result)
+        annotations = render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
+        )
+        widget.set_annotations(STANDARD_BOARD, annotations)
         assert widget.fretboard == STANDARD_BOARD
-        assert widget.result == result
+        assert widget.annotations == annotations
 
     def test_accepts_empty_annotations(self, qapp: QApplication) -> None:
         widget = FretboardWidget()
-        empty: LayerResult[ScaleFretboardPosition] = LayerResult("scale", "Scale", ())
-        widget.set_fretboard_data(STANDARD_BOARD, empty)
-        assert widget.result is not None
-        assert widget.result.annotations == ()
+        widget.set_annotations(STANDARD_BOARD, ())
+        assert widget.fretboard == STANDARD_BOARD
+        assert widget.annotations == ()
 
-    def test_replaces_previous_data(self, qapp: QApplication) -> None:
+    def test_replaces_previous_annotations(self, qapp: QApplication) -> None:
         widget = FretboardWidget()
-        first = evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
-        second = evaluate_scale(STANDARD_BOARD, PitchClass.C, "major")
-        widget.set_fretboard_data(STANDARD_BOARD, first)
-        assert widget.result == first
-        widget.set_fretboard_data(STANDARD_BOARD, second)
-        assert widget.result == second
+        first = render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
+        )
+        second = render_scale_result(evaluate_scale(STANDARD_BOARD, PitchClass.C, "major"))
+        widget.set_annotations(STANDARD_BOARD, first)
+        assert widget.annotations == first
+        widget.set_annotations(STANDARD_BOARD, second)
+        assert widget.annotations == second
 
     def test_renders_fretboard_shorter_than_twelve_frets(self, qapp: QApplication) -> None:
         short_board = Fretboard(STANDARD, 5)
         widget = FretboardWidget()
-        widget.set_fretboard_data(
-            short_board, evaluate_scale(short_board, PitchClass.A, "minor_pentatonic")
+        annotations = render_scale_result(
+            evaluate_scale(short_board, PitchClass.A, "minor_pentatonic")
         )
-        assert widget.result is not None
-        assert all(annotation.position.fret <= 5 for annotation in widget.result.annotations)
+        widget.set_annotations(short_board, annotations)
+        assert widget.fretboard == short_board
+        assert all(annotation.position.fret <= 5 for annotation in widget.annotations)
         pixmap = widget.grab()
         assert not pixmap.isNull()
+
+    def test_accepts_interval_only_annotations(self, qapp: QApplication) -> None:
+        annotations = render_interval_result(evaluate_intervals(STANDARD_BOARD, PitchClass.A))
+        widget = FretboardWidget()
+        widget.set_annotations(STANDARD_BOARD, annotations)
+        assert widget.annotations == annotations
+        pixmap = widget.grab()
+        assert not pixmap.isNull()
+
+    def test_renders_combined_annotations(self, qapp: QApplication) -> None:
+        combined = render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
+        ) + render_interval_result(evaluate_intervals(STANDARD_BOARD, PitchClass.A))
+        widget = FretboardWidget()
+        widget.set_annotations(STANDARD_BOARD, combined)
+        assert widget.annotations == combined
+        pixmap = widget.grab()
+        assert not pixmap.isNull()
+
+    def test_shared_position_keeps_scale_primary_and_interval_secondary(
+        self, qapp: QApplication
+    ) -> None:
+        combined = render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
+        ) + render_interval_result(evaluate_intervals(STANDARD_BOARD, PitchClass.A))
+        widget = FretboardWidget()
+        widget.set_annotations(STANDARD_BOARD, combined)
+        plans = {plan.position: plan for plan in widget._build_plan()}
+        shared = plans[FretPosition(6, 0)]  # open E: scale fifth + interval fifth
+        assert shared.primary.role is RenderRole.SCALE_TONE
+        assert shared.secondary is not None
+        assert shared.secondary.role is RenderRole.INTERVAL
+        assert shared.secondary.label == "5"
+
+    def test_widget_source_has_no_scale_domain_types(self) -> None:
+        module = inspect.getmodule(FretboardWidget)
+        assert module is not None and module.__file__ is not None
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        assert "ScaleFretboardPosition" not in source
+        assert "LayerResult" not in source
 
 
 class TestMainWindowSelectors:
@@ -124,8 +175,8 @@ class TestMainWindowSelectors:
         assert window.root_selector.currentText() == "A"
         assert window.scale_selector.currentText() == MINOR_PENTATONIC.name
         assert window.selection_label.text() == "A Minor Pentatonic"
-        assert window.fretboard_widget.result == evaluate_scale(
-            STANDARD_BOARD, PitchClass.A, "minor_pentatonic"
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
         )
 
     def test_changing_root_and_scale_re_evaluates(self, qapp: QApplication) -> None:
@@ -133,8 +184,8 @@ class TestMainWindowSelectors:
         window.root_selector.setCurrentIndex(0)  # C
         window.scale_selector.setCurrentIndex(0)  # Major
         assert window.selection_label.text() == "C Major"
-        assert window.fretboard_widget.result == evaluate_scale(
-            STANDARD_BOARD, PitchClass.C, "major"
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.C, "major")
         )
 
     def test_changing_scale_alone_re_evaluates(self, qapp: QApplication) -> None:
@@ -144,13 +195,61 @@ class TestMainWindowSelectors:
         )
         window.scale_selector.setCurrentIndex(dorian_index)
         assert window.selection_label.text() == "A Dorian"
-        assert window.fretboard_widget.result == evaluate_scale(
-            STANDARD_BOARD, PitchClass.A, "dorian"
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "dorian")
         )
 
     def test_evaluated_annotations_stay_within_bounds(self, qapp: QApplication) -> None:
         window = MainWindow()
-        assert window.fretboard_widget.result is not None
-        for annotation in window.fretboard_widget.result.annotations:
+        assert window.fretboard_widget.annotations
+        for annotation in window.fretboard_widget.annotations:
             assert 1 <= annotation.position.string_number <= 6
             assert 0 <= annotation.position.fret <= 12
+
+
+class TestIntervalsCheckbox:
+    def test_defaults_to_hidden(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window.intervals_checkbox.isChecked() is False
+        assert all(
+            annotation.role is not RenderRole.INTERVAL
+            for annotation in window.fretboard_widget.annotations
+        )
+
+    def test_enabling_evaluates_and_displays_interval_annotations(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.intervals_checkbox.setChecked(True)
+        assert window.intervals_checkbox.isChecked() is True
+        assert any(
+            annotation.role is RenderRole.INTERVAL
+            for annotation in window.fretboard_widget.annotations
+        )
+        expected = render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "minor_pentatonic")
+        ) + render_interval_result(evaluate_intervals(STANDARD_BOARD, PitchClass.A))
+        assert window.fretboard_widget.annotations == expected
+        pixmap = window.fretboard_widget.grab()
+        assert not pixmap.isNull()
+
+    def test_changing_root_updates_enabled_interval_results(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.intervals_checkbox.setChecked(True)
+        window.root_selector.setCurrentIndex(0)  # C
+        expected = render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.C, "minor_pentatonic")
+        ) + render_interval_result(evaluate_intervals(STANDARD_BOARD, PitchClass.C))
+        assert window.fretboard_widget.annotations == expected
+
+    def test_changing_scale_keeps_interval_layer_and_updates_scale(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        window.intervals_checkbox.setChecked(True)
+        dorian_index = next(
+            i for i, named in enumerate(available_scale_formulas()) if named.id == "dorian"
+        )
+        window.scale_selector.setCurrentIndex(dorian_index)
+        expected = render_scale_result(
+            evaluate_scale(STANDARD_BOARD, PitchClass.A, "dorian")
+        ) + render_interval_result(evaluate_intervals(STANDARD_BOARD, PitchClass.A))
+        assert window.fretboard_widget.annotations == expected

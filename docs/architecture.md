@@ -137,16 +137,27 @@ The only Qt-aware subsystem. It owns all rendering, consumes structured domain
 data and service results, and performs no theory calculations.
 
 - `guitar_app.app` — the desktop entry point (`guitar-app` console script).
-- `ui.main_window.MainWindow` — the main window: root and scale selectors, a
-  current-selection label, and the fretboard widget. It calls
-  `evaluate_scale(...)` on selection change and hands the resulting
-  `LayerResult` to the widget; service/domain errors are translated into a
+- `ui.main_window.MainWindow` — the main window: root and scale selectors, an
+  Intervals checkbox, a current-selection label, and the fretboard widget. On
+  any selection/toggle change it calls `evaluate_scale(...)` and, when
+  intervals are enabled, `evaluate_intervals(...)`, projects the enabled
+  results into render annotations, combines them, and hands the immutable
+  collection to the widget; service/domain errors are translated into a
   status-bar message.
+- `ui.render_annotations` — the UI projection boundary. `FretboardRenderAnnotation`
+  (`position`, `label`, `role`) plus `render_scale_result` and
+  `render_interval_result` that convert each concrete layer result into render
+  annotations. It is deliberately free of PySide6 so the projection rules are
+  unit-testable without a display; it carries presentation roles but never
+  colors, pixel coordinates, fonts, or painter objects.
 - `ui.fretboard_widget.FretboardWidget` — a `QWidget` + `QPainter` canvas that
-  renders an already-evaluated `LayerResult[ScaleFretboardPosition]` on a
-  fretboard. It draws strings, frets (with a distinct nut), inlaid fret markers
-  at 3/5/7/9/12, and scale-degree markers; open-string (fret 0) markers are
-  hollow rings to keep fret 0 unambiguous.
+  paints a `tuple[FretboardRenderAnnotation, ...]` on a fretboard; it knows
+  nothing about scale- or interval-domain annotation types. It draws strings,
+  frets (with a distinct nut), inlaid fret markers at 3/5/7/9/12, and markers
+  for the annotations; open-string (fret 0) markers are hollow rings to keep
+  fret 0 unambiguous. When a scale annotation and an interval annotation share
+  a position, the scale annotation is the centered primary marker and the
+  interval is a smaller offset badge, so neither is discarded.
 - `ui.geometry` — UI-only layout math mapping domain `(string_number, fret)`
   pairs to widget coordinates. It is deliberately free of PySide6 so the
   coordinate mapping is unit-testable without a display; pixel coordinates are
@@ -173,8 +184,9 @@ application is the primary entry point (`guitar-app`).
   Must remain independent of the theory engine and the UI; DSP code may use
   NumPy or native libraries only once profiling justifies it.
 - **ui** — the PySide6 desktop application. The main window, root/scale
-  selectors, and custom fretboard widget are implemented; interval, chord-tone,
-  and audio visualization will be added incrementally.
+  selectors, an Intervals checkbox, the UI render-annotation projection, and
+  the fretboard widget are implemented; chord-tone and audio visualization will
+  be added incrementally.
 - **services** — application-level services that orchestrate the core engines
   on behalf of the UI. `evaluate_scale`, `available_scale_formulas`, and
   `evaluate_intervals` are implemented; more operations (chord tones,
@@ -192,8 +204,9 @@ application is the primary entry point (`guitar-app`).
 | Interval↔fretboard map.| core.fretboard       | core.theory, core.instrument |
 | Layers                 | core.layers          | theory, instrument, fretboard |
 | Services               | services             | core engines (any)       |
+| Render annotations     | ui.render_annotations | core.layers, core.fretboard |
 | Rendering geometry     | ui.geometry          | core.fretboard (coords)  |
-| Fretboard widget       | ui                   | core.fretboard, core.layers, services |
+| Fretboard widget       | ui                   | core.fretboard, ui.render_annotations |
 | Progression (planned)  | core.progression     | theory, fretboard       |
 | Audio (planned)        | core.audio           | core.theory (for pitch names) |
 | UI                     | ui                   | everything above, via services |
@@ -207,6 +220,8 @@ Hard rules:
   only Qt-aware subsystem.
 - `ui.geometry` is the only place that maps domain coordinates to widget
   coordinates; pixel coordinates are never stored in core objects.
+- `ui.render_annotations` is the only place that converts layer results into
+  render annotations; core layer results never contain render annotations.
 - `core.fretboard` returns domain objects; it contains no drawing code.
 - Domain errors are raised as domain exceptions (`InvalidPitchError`,
   `InvalidTuningError`, `InvalidPositionError`) and translated into
@@ -250,8 +265,11 @@ class Layer(Protocol[P, T]):
 
 Example: the *IntervalLayer* evaluated with root A returns, for every position,
 the chromatic displacement from A. A *ChordToneLayer* for Am returns which
-positions belong to the Am triad. Both can be displayed at once, and re-rooting
-to G updates both automatically.
+positions belong to the Am triad. The UI projects each enabled layer result
+into render annotations (`ui.render_annotations`) and the widget paints them on
+one fretboard, so scale and interval layers display at once (scale centered,
+interval as a secondary badge on shared positions); re-rooting updates both
+automatically.
 
 ## Major architectural decisions
 
