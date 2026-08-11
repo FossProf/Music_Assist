@@ -25,5 +25,9 @@ class UnknownScaleFormulaError(ValueError):
     """Raised when a named scale formula ID is not in the catalog."""
 
 
+class UnknownTuningError(ValueError):
+    """Raised when a named tuning preset ID is not in the catalog."""
+
+
 class InvalidVoicingError(ValueError):
     """Raised for malformed triad voicings."""

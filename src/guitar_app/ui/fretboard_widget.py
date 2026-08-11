@@ -2,8 +2,9 @@
 
 The widget receives an already-projected, UI-only collection of
 :class:`FretboardRenderAnnotation` (plus the :class:`Fretboard` used for
-geometry). It knows nothing about scale- or interval-domain annotation types
-and owns all painting; the core and services remain Qt-free.
+geometry) and optionally one active :class:`TriadVoicingRenderGroup`. It knows
+nothing about scale-, interval-, or triad-domain annotation types and owns all
+painting; the core and services remain Qt-free.
 """
 
 from __future__ import annotations
@@ -50,6 +51,7 @@ _BADGE_TEXT = QColor("#4a3f33")
 _BADGE_OUTLINE = QColor("#8a7a6a")
 _TRIAD_FILL = QColor("#7db87d")
 _TRIAD_TEXT = QColor("#1d3a1d")
+_TRIAD_OUTLINE = QColor("#5a8f5a")
 _TRIAD_ROOT_FILL = QColor("#2f7d32")
 _TRIAD_ROOT_TEXT = QColor("#ffffff")
 _VOICING_GROUP_PEN = QColor("#4d8f4d")
@@ -74,6 +76,7 @@ _VOICING_INVERSION_LABELS = {
 }
 
 _SCALE_ROLES = (RenderRole.SCALE_ROOT, RenderRole.SCALE_TONE)
+_TRIAD_ROLES = (RenderRole.TRIAD_ROOT, RenderRole.TRIAD_TONE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,10 +246,14 @@ class FretboardWidget(QWidget):
         is_open = annotation.position.fret == 0
         if is_open:
             painter.setBrush(QBrush(_BACKGROUND_COLOR))
-            outline = _OPEN_PEN if annotation.role in _SCALE_ROLES else _INTERVAL_OUTLINE
+            if annotation.role in _SCALE_ROLES:
+                outline, text_color = _OPEN_PEN, _DEGREE_TEXT
+            elif annotation.role in _TRIAD_ROLES:
+                outline, text_color = _TRIAD_OUTLINE, _TRIAD_TEXT
+            else:
+                outline, text_color = _INTERVAL_OUTLINE, _INTERVAL_TEXT
             painter.setPen(QPen(outline, 2.0))
             painter.drawEllipse(center, radius, radius)
-            text_color = _DEGREE_TEXT if annotation.role in _SCALE_ROLES else _INTERVAL_TEXT
             painter.setPen(QPen(text_color))
         elif annotation.role is RenderRole.SCALE_ROOT:
             painter.setBrush(QBrush(_TONIC_FILL))
@@ -269,10 +276,10 @@ class FretboardWidget(QWidget):
             painter.drawEllipse(center, radius, radius)
             painter.setPen(QPen(_TRIAD_ROOT_TEXT))
         else:
-            painter.setBrush(QBrush(_INTERVAL_FILL))
+            painter.setBrush(QBrush(_TRIAD_FILL))
             painter.setPen(QPen(Qt.PenStyle.NoPen))
             painter.drawEllipse(center, radius, radius)
-            painter.setPen(QPen(_INTERVAL_TEXT))
+            painter.setPen(QPen(_TRIAD_TEXT))
         painter.drawText(
             QRectF(
                 center.x() - radius,

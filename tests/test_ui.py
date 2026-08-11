@@ -766,6 +766,19 @@ class TestVoicingNavigation:
         window.layer_checkboxes["scale"].setChecked(True)
         assert window.voicing_label.text().startswith("Voicing 2 /")
 
+    def test_toggling_triads_off_and_on_preserves_active_voicing(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.next_voicing_button.click()
+        assert window.voicing_label.text().startswith("Voicing 2 /")
+        window.layer_checkboxes["triad"].setChecked(False)
+        assert window.voicing_label.text() == ""
+        assert window.fretboard_widget.voicing_group is None
+        assert window.next_voicing_button.isEnabled() is False
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert window.voicing_label.text().startswith("Voicing 2 /")
+        assert window._active_voicing_index == 1
+
     def test_no_voicing_state(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
         empty = TriadLayerResult("triad", "Triads", (), ())
         monkeypatch.setattr(main_window_module, "evaluate_triad", lambda *args, **kwargs: empty)

@@ -35,6 +35,10 @@ or audio devices.
 - `ChromaticInterval` — modulo-12 pitch-class displacement (0..11) used for
   root-relative fretboard analysis. It encodes distance only, not theoretical
   interval identity; member names are conventional labels for readability.
+- `Triad`, `TriadQuality`, `TriadTone`, `TriadInversion` — the chord-tone
+  model (root + quality formula → ordered chord tones). Purely theoretical:
+  no register, string, or tuning data (see `core.fretboard` for the guitar-side
+  voicing model).
 - A theoretical `Interval` type that distinguishes enharmonic spellings
   (diminished fifth vs augmented fourth, compound intervals, ...) is planned
   but intentionally not implemented yet.
@@ -54,6 +58,10 @@ note-spelling engine is future work.
   an open pitch; `pitch_at(fret)` implements `open pitch + fret semitones`.
 - `Tuning` — an immutable, validated collection of strings. The standard EADGBE
   preset is exposed as `STANDARD`.
+- `NamedTuning` + `tuning_presets` — the built-in catalog of named tunings
+  (`available_tunings`, `tuning_by_id`) wrapping immutable `Tuning` objects with
+  stable snake_case IDs and human-readable names. Preset IDs are intended to
+  become stable persistence/API identifiers.
 
 The model deliberately supports arbitrary tunings, string counts, and (later)
 capo offsets. No fretboard geometry lives here.
@@ -207,9 +215,9 @@ application is the primary entry point (`guitar-app`).
 ### Planned subsystems
 
 - **core.layers** — the fretboard layer contract (`Layer`, `LayerResult`,
-  `FretboardAnnotation`) and concrete layers. `ScaleLayer` and `IntervalLayer`
-  are implemented; chord-tone and audio layers will be added incrementally.
-  Layers never touch UI components.
+  `FretboardAnnotation`) and concrete layers. `ScaleLayer`, `IntervalLayer`,
+  and `TriadLayer` are implemented; progression and audio layers will be added
+  incrementally. Layers never touch UI components.
 - **core.progression** — progressions and voice-leading analysis (later).
 - **core.audio** — pitch/onset detection, tuning, and note tracking (later).
   Must remain independent of the theory engine and the UI; DSP code may use
@@ -217,11 +225,12 @@ application is the primary entry point (`guitar-app`).
 - **ui** — the PySide6 desktop application. The main window, root/scale
   selectors, layer checkboxes derived from `ui.layer_controls`, the UI
   render-annotation projection, and the fretboard widget are implemented;
-  chord-tone and audio visualization will be added incrementally.
+  triad voicings are rendered as an active-shape overlay and audio
+  visualization will be added incrementally.
 - **services** — application-level services that orchestrate the core engines
-  on behalf of the UI. `evaluate_scale`, `available_scale_formulas`, and
-  `evaluate_intervals` are implemented; more operations (chord tones,
-  progressions) will be added.
+  on behalf of the UI. `evaluate_scale`, `available_scale_formulas`,
+  `evaluate_intervals`, `evaluate_triad`, and `available_triad_qualities` are
+  implemented; more operations (progressions) will be added.
 
 ## Domain boundaries
 
@@ -230,6 +239,7 @@ application is the primary entry point (`guitar-app`).
 | Pitch, PitchClass      | core.theory          | nothing guitar-specific |
 | ChromaticInterval      | core.theory          | nothing guitar-specific |
 | GuitarString, Tuning   | core.instrument      | core.theory             |
+| NamedTuning, presets   | core.instrument      | core.theory             |
 | Fretboard, positions   | core.fretboard       | core.theory, core.instrument |
 | Scale↔fretboard mapping| core.fretboard       | core.theory, core.instrument |
 | Interval↔fretboard map.| core.fretboard       | core.theory, core.instrument |
@@ -306,12 +316,14 @@ class Layer(Protocol[P, T]):
   richer result.
 
 Example: the *IntervalLayer* evaluated with root A returns, for every position,
-the chromatic displacement from A. A *ChordToneLayer* for Am returns which
-positions belong to the Am triad. The UI projects each enabled layer result
-into render annotations (`ui.render_annotations`) and the widget paints them on
-one fretboard, so scale and interval layers display at once (scale centered,
-interval as a secondary badge on shared positions); re-rooting updates both
-automatically.
+the chromatic displacement from A. The *TriadLayer* for Am returns which
+positions belong to the Am triad plus its detected adjacent-string voicings.
+The UI projects each enabled layer result into render annotations
+(`ui.render_annotations`) and the widget paints them on one fretboard, so all
+enabled layers display at once — the first enabled layer's annotation at a
+position is centered, any additional annotations become small badges around it,
+and the active triad voicing is drawn as an overlay; re-rooting updates all
+layers automatically.
 
 ## Major architectural decisions
 

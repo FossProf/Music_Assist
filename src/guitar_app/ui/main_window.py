@@ -143,9 +143,11 @@ class MainWindow(QMainWindow):
         self.statusBar().clearMessage()
         self.selection_label.setText(self._selection_label(root, named, quality))
         # Reset the active voicing only when the underlying triad result changed
-        # (root, quality, or fretboard), so toggling unrelated layers preserves
-        # the user's chosen voicing.
-        if groups != self._triad_groups:
+        # (root, quality, or fretboard), so toggling layers preserves the user's
+        # chosen voicing. While the triad layer is unchecked its result is not
+        # evaluated, so keep the last evaluated groups rather than clobbering
+        # them with the empty tuple.
+        if self.layer_checkboxes["triad"].isChecked() and groups != self._triad_groups:
             self._triad_groups = groups
             self._active_voicing_index = 0
         self._apply_active_voicing()

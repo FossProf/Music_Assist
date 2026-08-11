@@ -202,10 +202,10 @@ Triad(PitchClass.C, TriadQuality.MAJOR).tones
   diminished `1 B / b3 D / b5 F`, C augmented `1 C / 3 E / #5 G#`. Enharmonic
   spelling stays normalized through `PitchClass`; degree identity preserves
   theoretical intent.
-- **Inversions are deferred.** A `TriadInversion` enum (root/first/second
-  position) would represent tone *ordering only* without octave or register
-  data, which is premature until voicing context exists; reordering tones
-  without registers risks implying a bass note that cannot yet be modeled.
+- Inversion is *not* part of the pure `Triad` type (which holds no octave or
+  register data); it is modeled in the fretboard layer via `TriadInversion` and
+  `TriadVoicing`, where a concrete bass pitch exists (see the voicing section
+  below).
 
 ## GuitarString
 
@@ -238,6 +238,48 @@ Malformed numbering — duplicates, gaps, starting at 2, or containing 0 — rai
 `InvalidTuningError`. Alternate tunings and other string counts are
 first-class: `Tuning(name, (GuitarString(3, D2), GuitarString(2, A2),
 GuitarString(1, E4), ...))`.
+
+## Named tuning presets
+
+`NamedTuning` is a built-in catalog entry wrapping a `Tuning` with a stable
+programmatic ID and a human-readable name:
+
+```python
+NamedTuning(
+    id: str,        # stable snake_case identifier, e.g. "drop_d"
+    name: str,      # human-readable display name, e.g. "Drop D"
+    tuning: Tuning, # immutable; six strings stored low to high (6..1)
+)
+```
+
+The catalog lives in `core.instrument.tuning_presets` and mirrors the scale
+formula catalog pattern: tuning mechanics (`Tuning`, `GuitarString`) know
+nothing about preset IDs or names.
+
+- `available_tunings()` — the catalog entries in stable enumeration order.
+- `tuning_by_id(tuning_id)` — the entry with that ID, raising
+  `UnknownTuningError` for unknown IDs.
+- Each preset also has a module-level constant (`STANDARD_TUNING`, `DROP_D_TUNING`,
+  `D_STANDARD_TUNING`, `EB_STANDARD_TUNING`, `DADGAD_TUNING`, `OPEN_D_TUNING`,
+  `OPEN_E_TUNING`, `OPEN_G_TUNING`).
+
+Preset IDs are intended to become **stable persistence/API identifiers**, so
+they must not be renamed casually; the catalog order is likewise deterministic.
+
+Built-in presets (open strings, low to high):
+
+- Standard — `E2 A2 D3 G3 B3 E4` (reuses the canonical `STANDARD` instance)
+- Drop D — `D2 A2 D3 G3 B3 E4`
+- D Standard — `D2 G2 C3 F3 A3 D4`
+- Eb Standard — `Eb2 Ab2 Db3 Gb3 Bb3 Eb4` (normalized to `D#/G#/C#/F#/A#`
+  pitch classes, octave/register preserved)
+- DADGAD — `D2 A2 D3 G3 A3 D4`
+- Open D — `D2 A2 D3 F#3 A3 D4`
+- Open E — `E2 B2 E3 G#3 B3 E4`
+- Open G — `D2 G2 D3 G3 B3 D4`
+
+All presets are six-string with string numbers `6..1` in stored (low-to-high)
+order; `string 6` is always the lowest conventional guitar string.
 
 ## Fretboard, FretPosition, FretboardPosition
 
@@ -339,9 +381,9 @@ map_triad_to_fretboard(board, Triad(PitchClass.C, TriadQuality.MAJOR))
 - Ordering is deterministic: fretboard iteration order (stored string order,
   lowest fret first), then formula/tone order for multiple matches at one
   position. `triad.tones` is cached before the position loop.
-- No three-note voicing detection, inversions, string-set grouping, or
-  fingering/span constraints. That is the explicit job of a future voicing
-  model.
+- This mapping only answers "which positions belong to the triad"; three-note
+  voicing detection, inversions, string-set grouping, and span constraints are
+  the job of `find_triad_voicings` below.
 
 ## TriadInversion, TriadVoicing, find_triad_voicings
 
@@ -466,6 +508,7 @@ hard to express.
 - `InvalidPositionError` — string/fret positions outside the fretboard.
 - `InvalidScaleDegreeError` — invalid scale degrees or malformed scale formulas.
 - `UnknownScaleFormulaError` — a named scale formula ID is not in the catalog.
+- `UnknownTuningError` — a named tuning preset ID is not in the catalog.
 - `InvalidVoicingError` — malformed triad voicings.
 
 These are domain errors raised by the core engines; the application layer is

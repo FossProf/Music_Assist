@@ -22,10 +22,12 @@ the architecture.
 **Milestone 1 — mathematical core model + multi-layer GUI vertical slice.** The
 domain model for pitch classes, pitches, intervals, guitar strings, tunings,
 and a configurable fretboard is implemented and unit tested, along with scales,
-scale-to-fretboard mapping, interval-to-fretboard mapping, fretboard layers,
-and an application service layer. A PySide6 desktop window lets you pick a root
-pitch class and a named scale, toggle the Scale and Intervals layers, and see
-the enabled overlays rendered together across a standard-tuned fretboard.
+triads, scale/triad-to-fretboard mapping, interval-to-fretboard mapping,
+adjacent-string triad voicings with inversions, fretboard layers, and an
+application service layer. A PySide6 desktop window lets you pick a root pitch
+class, a named scale, and a triad quality, toggle the Scale, Intervals, and
+Triads layers, and see the enabled overlays rendered together across a
+standard-tuned fretboard — including cycling through detected triad voicings.
 
 Implemented:
 
@@ -41,15 +43,22 @@ Implemented:
   relative to a chosen root
 - Scales (`Scale`, `ScaleTone`) and a catalog of named formulas (major, minor,
   pentatonics, modes) via the application service `evaluate_scale`
-- Fretboard layers (`Layer`, `LayerResult`, `ScaleLayer`, `IntervalLayer`) and
-  per-layer application services (`evaluate_scale`, `evaluate_intervals`)
-- PySide6 desktop window: root/scale selectors, Scale/Intervals layer
-  checkboxes, and a fretboard widget that renders the enabled layers together
-  (scale annotations centered, interval annotations as secondary badges)
+- Triads (`Triad`, `TriadTone`, `TriadQuality`) with major, minor, diminished,
+  and augmented qualities via the application service `evaluate_triad`
+- Adjacent-string triad voicings (`find_triad_voicings`) with inversion
+  classification (root, first, second) and a configurable fret span
+- Fretboard layers (`Layer`, `LayerResult`, `ScaleLayer`, `IntervalLayer`,
+  `TriadLayer`) and per-layer application services (`evaluate_scale`,
+  `evaluate_intervals`, `evaluate_triad`)
+- PySide6 desktop window: root/scale/triad-quality selectors, Scale/Intervals/
+  Triads layer checkboxes, Prev/Next voicing controls, and a fretboard widget
+  that renders the enabled layers together (first enabled annotation centered,
+  additional ones as secondary badges, active triad voicing as an overlay)
 
 Not yet implemented (see `docs/architecture.md` for the roadmap):
 
-- Additional layers (chords, progressions, ...)
+- Additional layer types (extended chords, progressions, ...) and voicing
+  filtering/ranking
 - Chord and progression analysis
 - Audio capture and pitch detection
 - Circle-of-fifths and other exploratory tools
@@ -81,9 +90,11 @@ Launch the desktop application (requires a display):
 uv run guitar-app             # or: python -m guitar_app.app
 ```
 
-This opens a window with root and scale selectors plus Scale/Intervals layer
-checkboxes. The default view (A Minor Pentatonic) is shown on the fretboard;
-changing a selector or toggling a layer updates it.
+This opens a window with root, scale, and triad-quality selectors plus
+Scale/Intervals/Triads layer checkboxes. The default view (A Minor Pentatonic)
+is shown on the fretboard; changing a selector or toggling a layer updates it.
+With the Triads layer enabled, the Prev/Next buttons step through the detected
+voicings of the selected triad.
 
 To inspect the fretboard model from the command line instead:
 
@@ -108,10 +119,13 @@ uv run mypy .          # static type check
 ```
 src/guitar_app/
     core/            # UI-agnostic engines
-        theory/      # PitchClass, Pitch, ChromaticInterval, Scale, ScaleDegree
+        theory/      # PitchClass, Pitch, ChromaticInterval, Scale, ScaleDegree,
+                     #   Triad, TriadQuality, TriadTone, TriadInversion
         instrument/  # GuitarString, Tuning, standard preset
-        fretboard/   # Fretboard, FretPosition, scale & interval mappings
-        layers/      # Layer contract, LayerResult, ScaleLayer, IntervalLayer
+        fretboard/   # Fretboard, FretPosition, scale & interval & triad mappings,
+                     #   triad voicing detection
+        layers/      # Layer contract, LayerResult, ScaleLayer, IntervalLayer,
+                     #   TriadLayer, TriadLayerResult
     services/        # application services orchestrating the core (Qt-free)
     ui/              # PySide6 app: layer controls, render annotations,
                      #   main window, fretboard widget
@@ -142,7 +156,9 @@ See `docs/architecture.md`, `docs/domain-model.md`, and the ADRs in
 - No capo support yet (planned).
 - The GUI slice is fixed to standard tuning and 12 frets; custom tunings and
   fret-count controls are not yet exposed.
-- No chords, progressions, or audio yet.
+- Triad voicings are limited to adjacent-string sets within the default fret
+  span; voicing filtering/ranking is future work.
+- No extended chords, progressions, or audio yet.
 
 ## License
 
