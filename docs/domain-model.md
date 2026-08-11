@@ -242,15 +242,21 @@ GuitarString(1, E4), ...))`.
 ## Named tuning presets
 
 `NamedTuning` is a built-in catalog entry wrapping a `Tuning` with a stable
-programmatic ID and a human-readable name:
+programmatic ID and a user-facing name:
 
 ```python
 NamedTuning(
     id: str,        # stable snake_case identifier, e.g. "drop_d"
-    name: str,      # human-readable display name, e.g. "Drop D"
+    name: str,      # user-facing preset label, e.g. "Drop D"
     tuning: Tuning, # immutable; six strings stored low to high (6..1)
 )
 ```
+
+**Naming rule.** `NamedTuning.name` is the user-facing preset label the UI
+shows. `Tuning.name` is the intrinsic/domain/debug label of the tuning value
+itself and is not user-facing. The two may coincide (e.g. DADGAD) but serve
+different roles; neither is removed. For example `STANDARD.name` stays
+`"Standard (EADGBE)"` while the catalog's user-facing label is `"Standard"`.
 
 The catalog lives in `core.instrument.tuning_presets` and mirrors the scale
 formula catalog pattern: tuning mechanics (`Tuning`, `GuitarString`) know

@@ -5,6 +5,11 @@ Keeps named tuning definitions separate from tuning mechanics:
 :class:`~guitar_app.core.instrument.guitar_string.GuitarString` know nothing
 about catalog IDs or preset names. Preset IDs are intended to become stable
 persistence/API identifiers and must not be renamed casually.
+
+Naming rule: :attr:`NamedTuning.name` is the user-facing preset label;
+``Tuning.name`` is the intrinsic/domain/debug label of the tuning value itself.
+They may coincide (e.g. DADGAD) but serve different roles — the UI displays
+``NamedTuning.name``, never ``Tuning.name``.
 """
 
 from __future__ import annotations
@@ -36,9 +41,10 @@ class NamedTuning:
     """A named tuning preset in the built-in catalog.
 
     ``id`` is the stable programmatic identifier (snake_case); ``name`` is the
-    human-readable display name. The wrapped ``tuning`` is immutable. Preset
-    IDs are intended to become stable persistence/API identifiers, so they
-    must not be renamed casually.
+    user-facing preset label. ``tuning.name`` is the intrinsic/domain/debug
+    label of the wrapped :class:`Tuning` and is not user-facing. The wrapped
+    ``tuning`` is immutable. Preset IDs are intended to become stable
+    persistence/API identifiers, so they must not be renamed casually.
     """
 
     id: str
@@ -56,7 +62,7 @@ DROP_D_TUNING = NamedTuning(
     "drop_d",
     "Drop D",
     _six_string(
-        "Drop D",
+        "Drop D (DADGBE)",
         Pitch(PitchClass.D, 2),
         Pitch(PitchClass.A, 2),
         Pitch(PitchClass.D, 3),
@@ -70,7 +76,7 @@ D_STANDARD_TUNING = NamedTuning(
     "d_standard",
     "D Standard",
     _six_string(
-        "D Standard",
+        "D Standard (DGCFAD)",
         Pitch(PitchClass.D, 2),
         Pitch(PitchClass.G, 2),
         Pitch(PitchClass.C, 3),
@@ -86,7 +92,7 @@ EB_STANDARD_TUNING = NamedTuning(
     "eb_standard",
     "Eb Standard",
     _six_string(
-        "Eb Standard",
+        "Eb Standard (EbAbDbGbBbEb)",
         Pitch(PitchClass.DSHARP, 2),
         Pitch(PitchClass.GSHARP, 2),
         Pitch(PitchClass.CSHARP, 3),
@@ -114,7 +120,7 @@ OPEN_D_TUNING = NamedTuning(
     "open_d",
     "Open D",
     _six_string(
-        "Open D",
+        "Open D (DADF#AD)",
         Pitch(PitchClass.D, 2),
         Pitch(PitchClass.A, 2),
         Pitch(PitchClass.D, 3),
@@ -128,7 +134,7 @@ OPEN_E_TUNING = NamedTuning(
     "open_e",
     "Open E",
     _six_string(
-        "Open E",
+        "Open E (EBEG#BE)",
         Pitch(PitchClass.E, 2),
         Pitch(PitchClass.B, 2),
         Pitch(PitchClass.E, 3),
@@ -142,7 +148,7 @@ OPEN_G_TUNING = NamedTuning(
     "open_g",
     "Open G",
     _six_string(
-        "Open G",
+        "Open G (DGDGBD)",
         Pitch(PitchClass.D, 2),
         Pitch(PitchClass.G, 2),
         Pitch(PitchClass.D, 3),

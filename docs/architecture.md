@@ -60,7 +60,8 @@ note-spelling engine is future work.
   preset is exposed as `STANDARD`.
 - `NamedTuning` + `tuning_presets` — the built-in catalog of named tunings
   (`available_tunings`, `tuning_by_id`) wrapping immutable `Tuning` objects with
-  stable snake_case IDs and human-readable names. Preset IDs are intended to
+  stable snake_case IDs. `NamedTuning.name` is the user-facing preset label;
+  `Tuning.name` is the intrinsic/domain/debug label. Preset IDs are intended to
   become stable persistence/API identifiers.
 
 The model deliberately supports arbitrary tunings, string counts, and (later)

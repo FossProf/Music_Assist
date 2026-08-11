@@ -161,6 +161,36 @@ class TestLookup:
             tuning_by_id("not-a-tuning")
 
 
+class TestNamingRule:
+    def test_preset_label_and_intrinsic_label_are_distinct_for_standard(self) -> None:
+        assert STANDARD_TUNING.name == "Standard"
+        assert STANDARD_TUNING.tuning.name == "Standard (EADGBE)"
+
+    def test_intrinsic_label_is_not_the_user_facing_label(self) -> None:
+        user_facing = {entry.name for entry in TUNING_PRESETS}
+        intrinsic = {entry.tuning.name for entry in TUNING_PRESETS}
+        assert user_facing == {
+            "Standard",
+            "Drop D",
+            "D Standard",
+            "Eb Standard",
+            "DADGAD",
+            "Open D",
+            "Open E",
+            "Open G",
+        }
+        assert intrinsic == {
+            "Standard (EADGBE)",
+            "Drop D (DADGBE)",
+            "D Standard (DGCFAD)",
+            "Eb Standard (EbAbDbGbBbEb)",
+            "DADGAD",
+            "Open D (DADF#AD)",
+            "Open E (EBEG#BE)",
+            "Open G (DGDGBD)",
+        }
+
+
 class TestStandardReuse:
     def test_catalog_standard_reuses_existing_standard(self) -> None:
         assert STANDARD_TUNING.tuning is STANDARD
