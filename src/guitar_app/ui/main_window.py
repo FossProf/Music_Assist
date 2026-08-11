@@ -161,13 +161,16 @@ class MainWindow(QMainWindow):
         content.
         """
         root_spelling = root.spelling()
+        parts: list[str] = []
         if self.layer_checkboxes["scale"].isChecked():
-            return f"{root_spelling} {named.name}"
+            parts.append(named.name)
         if self.layer_checkboxes["interval"].isChecked():
-            return f"{root_spelling} Intervals"
+            parts.append("Intervals")
         if self.layer_checkboxes["triad"].isChecked():
-            return f"{root_spelling} {quality.display_name} Triads"
-        return f"{root_spelling} — No layers"
+            parts.append(f"{quality.display_name} Triads")
+        if not parts:
+            return f"{root_spelling} — No layers"
+        return f"{root_spelling} {' · '.join(parts)}"
 
     def _enabled_layer_data(
         self,

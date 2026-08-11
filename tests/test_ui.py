@@ -383,15 +383,95 @@ class TestSelectionLabel:
         window.layer_checkboxes["interval"].setChecked(True)
         assert window.selection_label.text() == "A Intervals"
 
-    def test_label_both_enabled(self, qapp: QApplication) -> None:
+    def test_label_triads_only(self, qapp: QApplication) -> None:
         window = MainWindow()
-        window.layer_checkboxes["interval"].setChecked(True)
-        assert window.selection_label.text() == "A Minor Pentatonic"
+        window.layer_checkboxes["scale"].setChecked(False)
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert window.selection_label.text() == "A Major Triads"
 
-    def test_label_both_disabled(self, qapp: QApplication) -> None:
+    def test_label_none(self, qapp: QApplication) -> None:
         window = MainWindow()
         window.layer_checkboxes["scale"].setChecked(False)
         assert window.selection_label.text() == "A — No layers"
+
+    def test_label_scale_and_intervals(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        assert window.selection_label.text() == "A Minor Pentatonic · Intervals"
+
+    def test_label_scale_and_triads(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert window.selection_label.text() == "A Minor Pentatonic · Major Triads"
+
+    def test_label_intervals_and_triads(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert window.selection_label.text() == "A Intervals · Major Triads"
+
+    def test_label_all_three(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert window.selection_label.text() == "A Minor Pentatonic · Intervals · Major Triads"
+
+    def test_label_preserves_deterministic_layer_order(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert window.selection_label.text() == ("A Minor Pentatonic · Intervals · Major Triads")
+        window.triad_quality_selector.setCurrentIndex(3)  # Augmented
+        assert window.selection_label.text() == (
+            "A Minor Pentatonic · Intervals · Augmented Triads"
+        )
+
+    def test_changing_root_updates_only_the_prefix(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.root_selector.setCurrentIndex(0)  # C
+        assert window.selection_label.text() == "C Minor Pentatonic · Intervals · Major Triads"
+        window.layer_checkboxes["triad"].setChecked(False)
+        assert window.selection_label.text() == "C Minor Pentatonic · Intervals"
+        window.layer_checkboxes["scale"].setChecked(False)
+        assert window.selection_label.text() == "C Intervals"
+        window.layer_checkboxes["interval"].setChecked(False)
+        assert window.selection_label.text() == "C — No layers"
+
+    def test_changing_scale_changes_only_the_scale_portion(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        dorian_index = next(
+            i for i, named in enumerate(available_scale_formulas()) if named.id == "dorian"
+        )
+        window.scale_selector.setCurrentIndex(dorian_index)
+        assert window.selection_label.text() == "A Dorian · Intervals · Major Triads"
+
+    def test_changing_triad_quality_changes_only_the_triad_portion(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.triad_quality_selector.setCurrentIndex(2)  # Diminished
+        assert window.selection_label.text() == "A Minor Pentatonic · Intervals · Diminished Triads"
+
+    def test_hidden_layer_selections_do_not_appear(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        dorian_index = next(
+            i for i, named in enumerate(available_scale_formulas()) if named.id == "dorian"
+        )
+        window.scale_selector.setCurrentIndex(dorian_index)
+        window.layer_checkboxes["scale"].setChecked(False)
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert window.selection_label.text() == "A Intervals · Major Triads"
+        window.triad_quality_selector.setCurrentIndex(1)  # Minor (triads hidden)
+        window.layer_checkboxes["triad"].setChecked(False)
+        assert window.selection_label.text() == "A Intervals"
 
     def test_re_enabling_scale_restores_currently_selected_scale_label(
         self, qapp: QApplication
@@ -406,6 +486,18 @@ class TestSelectionLabel:
         window.layer_checkboxes["scale"].setChecked(True)
         assert window.selection_label.text() == "A Dorian"
 
+    def test_re_enabling_triads_restores_currently_selected_quality(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.triad_quality_selector.setCurrentIndex(1)  # Minor
+        assert window.selection_label.text() == "A Minor Pentatonic · Minor Triads"
+        window.layer_checkboxes["triad"].setChecked(False)
+        assert window.selection_label.text() == "A Minor Pentatonic"
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert window.selection_label.text() == "A Minor Pentatonic · Minor Triads"
+
     def test_changing_scale_while_intervals_only_keeps_interval_label(
         self, qapp: QApplication
     ) -> None:
@@ -417,30 +509,6 @@ class TestSelectionLabel:
         )
         window.scale_selector.setCurrentIndex(dorian_index)
         assert window.selection_label.text() == "A Intervals"
-
-    def test_changing_root_updates_label_in_each_state(self, qapp: QApplication) -> None:
-        window = MainWindow()
-        window.root_selector.setCurrentIndex(0)  # C
-        assert window.selection_label.text() == "C Minor Pentatonic"  # scale only
-        window.layer_checkboxes["interval"].setChecked(True)
-        assert window.selection_label.text() == "C Minor Pentatonic"  # both
-        window.layer_checkboxes["scale"].setChecked(False)
-        assert window.selection_label.text() == "C Intervals"  # intervals only
-        window.layer_checkboxes["interval"].setChecked(False)
-        assert window.selection_label.text() == "C — No layers"  # neither
-
-    def test_label_triad_only(self, qapp: QApplication) -> None:
-        window = MainWindow()
-        window.layer_checkboxes["scale"].setChecked(False)
-        window.layer_checkboxes["triad"].setChecked(True)
-        assert window.selection_label.text() == "A Major Triads"
-
-    def test_label_triad_changes_with_quality(self, qapp: QApplication) -> None:
-        window = MainWindow()
-        window.layer_checkboxes["scale"].setChecked(False)
-        window.layer_checkboxes["triad"].setChecked(True)
-        window.triad_quality_selector.setCurrentIndex(1)  # Minor
-        assert window.selection_label.text() == "A Minor Triads"
 
 
 class TestTriadQualitySelector:
