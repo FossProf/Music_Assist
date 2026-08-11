@@ -84,8 +84,11 @@ never rendering questions ("which color should this position be?").
 - `LayerResult[T]` — layer metadata plus a tuple of layer-specific annotations.
   Every annotation identifies its fretboard location via `FretPosition`
   (`FretboardAnnotation`). There are no universal context or rendering fields.
-- `ScaleLayer` (`id="scale"`, `name="Scale"`) — the first concrete layer; it
-  delegates to `map_scale_to_fretboard`.
+- `ScaleLayer` (`id="scale"`, `name="Scale"`) — projects a scale onto a
+  fretboard; it delegates to `map_scale_to_fretboard`.
+- `IntervalLayer` (`id="interval"`, `name="Intervals"`) — annotates every
+  fretboard position with its root-relative chromatic interval; it delegates to
+  `map_intervals_to_fretboard`.
 
 Each concrete layer owns the inputs it requires (no universal `LayerContext`).
 Layers produce structured annotations only; rendering is always the UI's job.
@@ -154,9 +157,9 @@ application is the primary entry point (`guitar-app`).
 ### Planned subsystems
 
 - **core.layers** — the fretboard layer contract (`Layer`, `LayerResult`,
-  `FretboardAnnotation`) and concrete layers. `ScaleLayer` is implemented;
-  interval, chord-tone, and audio layers will be added incrementally. Layers
-  never touch UI components.
+  `FretboardAnnotation`) and concrete layers. `ScaleLayer` and `IntervalLayer`
+  are implemented; chord-tone and audio layers will be added incrementally.
+  Layers never touch UI components.
 - **core.progression** — progressions and voice-leading analysis (later).
 - **core.audio** — pitch/onset detection, tuning, and note tracking (later).
   Must remain independent of the theory engine and the UI; DSP code may use
@@ -177,6 +180,7 @@ application is the primary entry point (`guitar-app`).
 | GuitarString, Tuning   | core.instrument      | core.theory             |
 | Fretboard, positions   | core.fretboard       | core.theory, core.instrument |
 | Scale↔fretboard mapping| core.fretboard       | core.theory, core.instrument |
+| Interval↔fretboard map.| core.fretboard       | core.theory, core.instrument |
 | Layers                 | core.layers          | theory, instrument, fretboard |
 | Services               | services             | core engines (any)       |
 | Rendering geometry     | ui.geometry          | core.fretboard (coords)  |
@@ -230,9 +234,12 @@ class Layer(Protocol[P, T]):
   This keeps every layer individually testable without a GUI and lets several
   layers be combined on one fretboard.
 - First concrete layer: `ScaleLayer` (`id="scale"`, `name="Scale"`), which
-  delegates to `map_scale_to_fretboard`.
+  delegates to `map_scale_to_fretboard`. Second: `IntervalLayer`
+  (`id="interval"`, `name="Intervals"`), which delegates to
+  `map_intervals_to_fretboard` and annotates every fretboard position with its
+  root-relative chromatic interval.
 
-Example: an *IntervalLayer* evaluated with root A returns, for every position,
+Example: the *IntervalLayer* evaluated with root A returns, for every position,
 the chromatic displacement from A. A *ChordToneLayer* for Am returns which
 positions belong to the Am triad. Both can be displayed at once, and re-rooting
 to G updates both automatically.

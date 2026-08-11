@@ -272,8 +272,7 @@ map_intervals_to_fretboard(board, PitchClass.A)
   `F#`→`6`, `G`→`b7`, `G#`→`7`). It does not introduce a theoretical
   interval/spelling model; the degree-style labels come from
   `ChromaticInterval.abbreviation`.
-- No `IntervalLayer`, service, or UI exists yet; the mapping is a raw fretboard
-  domain function.
+- No service or UI exists yet; the mapping is a raw fretboard domain function.
 
 ## Layer results
 
@@ -288,6 +287,11 @@ rendering fields such as color, shape, opacity, font, or pixel coordinates.
 stateless: the fretboard and scale are supplied at evaluation time, and its
 result preserves the `ScaleFretboardPosition` data by delegating to
 `map_scale_to_fretboard`.
+
+`IntervalLayer` (`id="interval"`, `name="Intervals"`) is the second concrete
+layer. It is stateless: the fretboard and root are supplied at evaluation time,
+and its result preserves the `IntervalFretboardPosition` data by delegating to
+`map_intervals_to_fretboard`.
 
 ## Planned concepts
 
