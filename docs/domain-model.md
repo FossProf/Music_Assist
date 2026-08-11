@@ -310,6 +310,39 @@ map_intervals_to_fretboard(board, PitchClass.A)
   `IntervalLayer`, and the render-annotation projection
   (`ui.render_annotations`); it remains a pure fretboard domain function.
 
+## TriadFretboardPosition, map_triad_to_fretboard
+
+Triad-to-fretboard mapping is the chord-tone equivalent of the scale mapping,
+again at the integration boundary between the theory domain and the fretboard
+domain. It maps **individual triad tones** only: given a `Fretboard` and a
+`Triad`, it returns every position whose pitch class belongs to the triad,
+preserving chord-tone degree identity. It does **not** claim any three-note
+combination is a playable voicing.
+
+```python
+from guitar_app.core.fretboard.triad_mapping import map_triad_to_fretboard
+from guitar_app.core.theory.triad import Triad, TriadQuality
+
+map_triad_to_fretboard(board, Triad(PitchClass.C, TriadQuality.MAJOR))
+```
+
+- `TriadFretboardPosition` preserves the string/fret location, the sounding
+  `Pitch`, the chord-tone `ScaleDegree` (`1`, `b3`, `3`, `b5`, `5`, `#5`), and
+  the root-relative `ChromaticInterval`, plus a `pitch_class` convenience
+  property. It contains **no rendering or fingering data**.
+- Matching emits **one result per matching `TriadTone`**, in triad formula
+  order, so degree identities are never collapsed into a single pitch class
+  (the four built-in qualities each resolve to distinct pitch classes, but the
+  loop preserves formula order in general).
+- `Triad` remains guitar-agnostic: mapping lives in `core.fretboard`, which
+  imports the theory triad but never vice versa.
+- Ordering is deterministic: fretboard iteration order (stored string order,
+  lowest fret first), then formula/tone order for multiple matches at one
+  position. `triad.tones` is cached before the position loop.
+- No three-note voicing detection, inversions, string-set grouping, or
+  fingering/span constraints. That is the explicit job of a future voicing
+  model.
+
 ## Layer results
 
 Fretboard overlays are implemented as layers in `core.layers` (see
@@ -333,7 +366,7 @@ and its result preserves the `IntervalFretboardPosition` data by delegating to
 
 The same style of typed value object will be used for:
 
-- `ChordQuality` / `Chord` / `Triad`
+- `ChordQuality` / `Chord`
 - `Key`
 - `Progression`
 
