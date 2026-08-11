@@ -91,6 +91,17 @@ class TestFretboardWidget:
         widget.set_fretboard_data(STANDARD_BOARD, second)
         assert widget.result == second
 
+    def test_renders_fretboard_shorter_than_twelve_frets(self, qapp: QApplication) -> None:
+        short_board = Fretboard(STANDARD, 5)
+        widget = FretboardWidget()
+        widget.set_fretboard_data(
+            short_board, evaluate_scale(short_board, PitchClass.A, "minor_pentatonic")
+        )
+        assert widget.result is not None
+        assert all(annotation.position.fret <= 5 for annotation in widget.result.annotations)
+        pixmap = widget.grab()
+        assert not pixmap.isNull()
+
 
 class TestMainWindowSelectors:
     def test_scale_selector_populated_from_catalog(self, qapp: QApplication) -> None:

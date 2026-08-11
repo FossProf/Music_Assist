@@ -105,6 +105,21 @@ it calls a service and receives a ready-to-render `LayerResult`.
 
 Services depend on `core`; **`core` never imports `services`**.
 
+**Standing objective — AI/agent access.** User-facing musical operations are
+exposed through UI-independent application services so the desktop UI and
+future AI/agent adapters share the same deterministic core behavior. The
+intended dependency direction is:
+
+```
+Desktop UI ─┐
+            ├─> application services ─> core
+AI adapter ─┘
+```
+
+No API/MCP server, networking, JSON schemas, or AI functionality is implemented
+yet; this note only documents the contract that new user-facing operations
+should be added as services rather than UI-only code.
+
 ### ui — PySide6 desktop application
 
 The only Qt-aware subsystem. It owns all rendering, consumes structured domain

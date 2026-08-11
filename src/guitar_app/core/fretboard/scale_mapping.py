@@ -50,9 +50,10 @@ def map_scale_to_fretboard(
     ``#4`` and ``b5``), one result is emitted per tone, in formula order, so
     degree identities are never collapsed into a single pitch class.
     """
+    tones = scale.tones
     results: list[ScaleFretboardPosition] = []
     for board_position in fretboard.positions():
-        for tone in scale.tones:
+        for tone in tones:
             if tone.pitch_class == board_position.pitch_class:
                 results.append(
                     ScaleFretboardPosition(

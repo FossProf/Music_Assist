@@ -114,6 +114,8 @@ class FretboardWidget(QWidget):
         radius = geometry.row_height * 0.18
         mid_y = geometry.top + geometry.height / 2
         for fret in FRET_MARKERS:
+            if fret > geometry.fret_count:
+                continue
             x = geometry.x_for_fret(fret)
             if fret == 12:
                 offset = radius * 1.9
