@@ -1,4 +1,4 @@
-"""Main window: root/scale selectors, layer checkboxes, and the fretboard widget."""
+"""Main window: tuning/root/scale selectors, layer checkboxes, and the fretboard widget."""
 
 from __future__ import annotations
 
@@ -15,10 +15,19 @@ from PySide6.QtWidgets import (
 
 from guitar_app.core.errors import InvalidScaleDegreeError, UnknownScaleFormulaError
 from guitar_app.core.fretboard.fretboard import Fretboard
-from guitar_app.core.instrument.tuning import STANDARD
+from guitar_app.core.instrument.tuning_presets import (
+    STANDARD_TUNING,
+    NamedTuning,
+    available_tunings,
+)
 from guitar_app.core.theory.pitch import PitchClass
 from guitar_app.core.theory.scale_formulas import MINOR_PENTATONIC, NamedScaleFormula
 from guitar_app.core.theory.triad import TriadQuality
+from guitar_app.services.instrument_state import (
+    DEFAULT_INSTRUMENT_STATE,
+    InstrumentState,
+    instrument_from_tuning_id,
+)
 from guitar_app.services.interval_service import evaluate_intervals
 from guitar_app.services.scale_service import available_scale_formulas, evaluate_scale
 from guitar_app.services.triad_service import available_triad_qualities, evaluate_triad
@@ -33,20 +42,18 @@ from guitar_app.ui.render_annotations import (
     render_triad_voicings,
 )
 
-#: The fixed fretboard shown in this first vertical slice.
-STANDARD_BOARD = Fretboard(STANDARD, 12)
-
 
 class MainWindow(QMainWindow):
     """The application's main window.
 
-    Owns the root/scale/quality selectors, a checkbox per layer-control
-    definition, Previous/Next voicing cycling, and the fretboard widget. On any
-    selection or toggle change it evaluates only the enabled layers through
-    their services, projects the results into render annotations in control
-    order, and hands the combined immutable collection (plus the currently
-    active voicing group) to the widget; it never constructs scale formulas or
-    performs triad calculations itself.
+    Owns the active :class:`InstrumentState`, the tuning/root/scale/quality
+    selectors, a checkbox per layer-control definition, Previous/Next voicing
+    cycling, and the fretboard widget. On any selection or toggle change it
+    re-derives the active fretboard from the instrument state, evaluates only
+    the enabled layers through their services, projects the results into render
+    annotations in control order, and hands the combined immutable collection
+    (plus the currently active voicing group) to the widget; it never constructs
+    scale formulas or performs triad calculations itself.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -55,7 +62,10 @@ class MainWindow(QMainWindow):
         self._pitch_classes: tuple[PitchClass, ...] = tuple(PitchClass)
         self._scale_formulas: tuple[NamedScaleFormula, ...] = available_scale_formulas()
         self._triad_qualities: tuple[TriadQuality, ...] = available_triad_qualities()
+        self._tunings: tuple[NamedTuning, ...] = available_tunings()
+        self._instrument_state: InstrumentState = DEFAULT_INSTRUMENT_STATE
 
+        self.tuning_selector = QComboBox()
         self.root_selector = QComboBox()
         self.scale_selector = QComboBox()
         self.triad_quality_selector = QComboBox()
@@ -64,6 +74,7 @@ class MainWindow(QMainWindow):
         }
         self.previous_voicing_button = QPushButton("Prev")
         self.next_voicing_button = QPushButton("Next")
+        self.tuning_label = QLabel()
         self.selection_label = QLabel()
         self.voicing_label = QLabel()
         self.fretboard_widget = FretboardWidget()
@@ -77,12 +88,15 @@ class MainWindow(QMainWindow):
         self._update_fretboard()
 
     def _build_selectors(self) -> None:
+        for tuning in self._tunings:
+            self.tuning_selector.addItem(tuning.name)
         for pitch_class in self._pitch_classes:
             self.root_selector.addItem(pitch_class.spelling())
         for named in self._scale_formulas:
             self.scale_selector.addItem(named.name)
         for quality in self._triad_qualities:
             self.triad_quality_selector.addItem(quality.display_name)
+        self.tuning_selector.setCurrentIndex(self._tunings.index(STANDARD_TUNING))
         self.root_selector.setCurrentIndex(self._pitch_classes.index(PitchClass.A))
         self.scale_selector.setCurrentIndex(self._scale_formulas.index(MINOR_PENTATONIC))
         self.triad_quality_selector.setCurrentIndex(self._triad_qualities.index(TriadQuality.MAJOR))
@@ -94,6 +108,8 @@ class MainWindow(QMainWindow):
         selectors_layout = QHBoxLayout(selectors)
         selectors_layout.setContentsMargins(8, 8, 8, 8)
         selectors_layout.setSpacing(6)
+        selectors_layout.addWidget(QLabel("Tuning:"))
+        selectors_layout.addWidget(self.tuning_selector)
         selectors_layout.addWidget(QLabel("Root:"))
         selectors_layout.addWidget(self.root_selector)
         selectors_layout.addWidget(QLabel("Scale:"))
@@ -102,6 +118,7 @@ class MainWindow(QMainWindow):
         selectors_layout.addWidget(self.triad_quality_selector)
         for control in LAYER_CONTROLS:
             selectors_layout.addWidget(self.layer_checkboxes[control.id])
+        selectors_layout.addWidget(self.tuning_label)
         selectors_layout.addWidget(self.selection_label)
         selectors_layout.addWidget(self.previous_voicing_button)
         selectors_layout.addWidget(self.next_voicing_button)
@@ -115,9 +132,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(selectors)
         layout.addWidget(self.fretboard_widget, 1)
         self.setCentralWidget(central)
-        self.resize(820, 420)
+        self.resize(900, 420)
 
     def _connect_selectors(self) -> None:
+        self.tuning_selector.currentIndexChanged.connect(self._update_fretboard)
         self.root_selector.currentIndexChanged.connect(self._update_fretboard)
         self.scale_selector.currentIndexChanged.connect(self._update_fretboard)
         self.triad_quality_selector.currentIndexChanged.connect(self._update_fretboard)
@@ -130,17 +148,27 @@ class MainWindow(QMainWindow):
         """Re-evaluate the enabled layers for the current selection and redraw."""
         if self.root_selector.currentIndex() < 0 or self.scale_selector.currentIndex() < 0:
             return
+        selected_tuning = self._tunings[self.tuning_selector.currentIndex()]
+        if selected_tuning.id != self._instrument_state.tuning_id:
+            self._instrument_state = instrument_from_tuning_id(
+                selected_tuning.id,
+                fret_count=self._instrument_state.fret_count,
+            )
+        fretboard = self._instrument_state.fretboard
         named = self._scale_formulas[self.scale_selector.currentIndex()]
         root = self._pitch_classes[self.root_selector.currentIndex()]
         quality = self._triad_qualities[self.triad_quality_selector.currentIndex()]
         try:
-            annotations, groups = self._enabled_layer_data(root, named, quality)
+            annotations, groups = self._enabled_layer_data(fretboard, root, named, quality)
         except (UnknownScaleFormulaError, InvalidScaleDegreeError) as exc:
             self.statusBar().showMessage(
                 f"Could not evaluate {root.spelling()} {named.name}: {exc}"
             )
             return
         self.statusBar().clearMessage()
+        self.tuning_label.setText(
+            f"Tuning: {self._instrument_state.display_name or self._instrument_state.tuning.name}"
+        )
         self.selection_label.setText(self._selection_label(root, named, quality))
         # Reset the active voicing only when the underlying triad result changed
         # (root, quality, or fretboard), so toggling layers preserves the user's
@@ -151,7 +179,7 @@ class MainWindow(QMainWindow):
             self._triad_groups = groups
             self._active_voicing_index = 0
         self._apply_active_voicing()
-        self.fretboard_widget.set_annotations(STANDARD_BOARD, annotations)
+        self.fretboard_widget.set_annotations(fretboard, annotations)
 
     def _selection_label(
         self, root: PitchClass, named: NamedScaleFormula, quality: TriadQuality
@@ -176,6 +204,7 @@ class MainWindow(QMainWindow):
 
     def _enabled_layer_data(
         self,
+        fretboard: Fretboard,
         root: PitchClass,
         named: NamedScaleFormula,
         quality: TriadQuality,
@@ -196,13 +225,13 @@ class MainWindow(QMainWindow):
             if not self.layer_checkboxes[control.id].isChecked():
                 continue
             if control.id == "scale":
-                scale_result = evaluate_scale(STANDARD_BOARD, root, named.id)
+                scale_result = evaluate_scale(fretboard, root, named.id)
                 annotations.extend(render_scale_result(scale_result))
             elif control.id == "interval":
-                interval_result = evaluate_intervals(STANDARD_BOARD, root)
+                interval_result = evaluate_intervals(fretboard, root)
                 annotations.extend(render_interval_result(interval_result))
             elif control.id == "triad":
-                triad_result = evaluate_triad(STANDARD_BOARD, root, quality)
+                triad_result = evaluate_triad(fretboard, root, quality)
                 annotations.extend(render_triad_result(triad_result))
                 groups = render_triad_voicings(triad_result)
         return tuple(annotations), groups

@@ -139,8 +139,9 @@ service to call.
 ### services.instrument_state — active-instrument configuration
 
 `InstrumentState` is the immutable application-level state for the active
-fretboard — the future source of the active `Fretboard` for the UI, persistence,
-and AI/API access. It bridges the tuning preset catalog to the fretboard:
+fretboard — the source of the active `Fretboard` consumed by the main window,
+and the future source for persistence and AI/API access. It bridges the tuning
+preset catalog to the fretboard:
 
 ```
 tuning preset catalog -> InstrumentState -> Fretboard -> services/layers
@@ -194,18 +195,23 @@ data and service results, and performs no theory calculations.
   `triad` disabled). IDs match the corresponding core layer IDs. Deliberately
   free of PySide6 and carries no widgets, callbacks, services, or layer
   objects; the MainWindow derives its checkboxes from these definitions.
-- `ui.main_window.MainWindow` — the main window: root, scale, and triad-quality
-  selectors, one checkbox per `LAYER_CONTROLS` entry, Previous/Next voicing
-  controls, a current-selection label, a voicing label, and the fretboard
-  widget. On any selection/toggle change it evaluates **only the enabled**
-  layers (an explicit branch per known UI layer — no generic dispatcher),
-  projects each result into render annotations, combines them in control
-  order, and hands the immutable collection plus the currently active voicing
-  group to the widget; disabling every layer is a supported empty state, and
-  service/domain errors are translated into a status-bar message. The active
-  voicing index resets to the first voicing only when the triad result
-  changes (root or quality), and wraps modulo the group count when cycling;
-  toggling unrelated layers preserves it.
+- `ui.main_window.MainWindow` — the main window: tuning, root, scale, and
+  triad-quality selectors, one checkbox per `LAYER_CONTROLS` entry,
+  Previous/Next voicing controls, a live tuning label (using the preset's
+  display name) plus a current-selection label and a voicing label, and the
+  fretboard widget. It owns the active `services.instrument_state`
+  `InstrumentState`; changing the tuning selector rebuilds it via
+  `instrument_from_tuning_id` while preserving the fret count and all other
+  selections. On any selection/toggle change it derives the active fretboard
+  from that state, evaluates **only the enabled** layers (an explicit branch
+  per known UI layer — no generic dispatcher), projects each result into
+  render annotations, combines them in control order, and hands the immutable
+  collection plus the currently active voicing group to the widget; disabling
+  every layer is a supported empty state, and service/domain errors are
+  translated into a status-bar message. The active voicing index resets to the
+  first voicing only when the triad result changes (root, quality, or
+  fretboard/tuning), and wraps modulo the group count when cycling; toggling
+  unrelated layers preserves it.
 - `ui.render_annotations` — the UI projection boundary.
   `FretboardRenderAnnotation` (`position`, `label`, `role`) plus
   `render_scale_result`, `render_interval_result`, and `render_triad_result`
@@ -252,15 +258,16 @@ application is the primary entry point (`guitar-app`).
 - **core.audio** — pitch/onset detection, tuning, and note tracking (later).
   Must remain independent of the theory engine and the UI; DSP code may use
   NumPy or native libraries only once profiling justifies it.
-- **ui** — the PySide6 desktop application. The main window, root/scale
+- **ui** — the PySide6 desktop application. The main window, tuning/root/scale
   selectors, layer checkboxes derived from `ui.layer_controls`, the UI
   render-annotation projection, and the fretboard widget are implemented;
   triad voicings are rendered as an active-shape overlay and audio
   visualization will be added incrementally.
 - **services** — application-level services that orchestrate the core engines
   on behalf of the UI. `evaluate_scale`, `available_scale_formulas`,
-  `evaluate_intervals`, `evaluate_triad`, and `available_triad_qualities` are
-  implemented; more operations (progressions) will be added.
+  `evaluate_intervals`, `evaluate_triad`, `available_triad_qualities`,
+  `instrument_from_tuning_id`, and `InstrumentState` are implemented; more
+  operations (progressions) will be added.
 
 ## Domain boundaries
 

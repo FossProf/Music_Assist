@@ -24,10 +24,11 @@ domain model for pitch classes, pitches, intervals, guitar strings, tunings,
 and a configurable fretboard is implemented and unit tested, along with scales,
 triads, scale/triad-to-fretboard mapping, interval-to-fretboard mapping,
 adjacent-string triad voicings with inversions, fretboard layers, and an
-application service layer. A PySide6 desktop window lets you pick a root pitch
-class, a named scale, and a triad quality, toggle the Scale, Intervals, and
-Triads layers, and see the enabled overlays rendered together across a
-standard-tuned fretboard — including cycling through detected triad voicings.
+application service layer. A PySide6 desktop window lets you pick a tuning
+preset, a root pitch class, a named scale, and a triad quality, toggle the
+Scale, Intervals, and Triads layers, and see the enabled overlays rendered
+together across the active instrument's fretboard — including cycling through
+detected triad voicings.
 
 Implemented:
 
@@ -36,9 +37,12 @@ Implemented:
 - ChromaticInterval: modulo-12 pitch-class displacement (0–11) for
   root-relative fretboard analysis
 - Guitar string model: `pitch at fret = open pitch + fret semitones`
-- Tunings with validation (string numbers exactly `1..N`), plus the standard
-  EADGBE preset
+- Tunings with validation (string numbers exactly `1..N`) and a built-in
+  catalog of named presets (Standard, Drop D, D Standard, Eb Standard, DADGAD,
+  Open D/E/G)
 - Configurable fretboard (arbitrary tuning, string count, fret count)
+- Instrument state service (`InstrumentState`) carrying the active tuning and
+  fret count, with `DEFAULT_INSTRUMENT_STATE` (Standard, 22 frets)
 - Pitch lookup, pitch-class search, exact-pitch search, and displacement maps
   relative to a chosen root
 - Scales (`Scale`, `ScaleTone`) and a catalog of named formulas (major, minor,
@@ -50,10 +54,13 @@ Implemented:
 - Fretboard layers (`Layer`, `LayerResult`, `ScaleLayer`, `IntervalLayer`,
   `TriadLayer`) and per-layer application services (`evaluate_scale`,
   `evaluate_intervals`, `evaluate_triad`)
-- PySide6 desktop window: root/scale/triad-quality selectors, Scale/Intervals/
-  Triads layer checkboxes, Prev/Next voicing controls, and a fretboard widget
-  that renders the enabled layers together (first enabled annotation centered,
-  additional ones as secondary badges, active triad voicing as an overlay)
+- PySide6 desktop window: tuning/root/scale/triad-quality selectors,
+  Scale/Intervals/Triads layer checkboxes, Prev/Next voicing controls, a live
+  tuning/selection/voicing label, and a fretboard widget that renders the
+  enabled layers for the active instrument state (first enabled annotation
+  centered, additional ones as secondary badges, active triad voicing as an
+  overlay); switching tuning presets re-evaluates every enabled layer against
+  the newly derived fretboard while preserving the fret count and selections
 
 Not yet implemented (see `docs/architecture.md` for the roadmap):
 
@@ -90,11 +97,12 @@ Launch the desktop application (requires a display):
 uv run guitar-app             # or: python -m guitar_app.app
 ```
 
-This opens a window with root, scale, and triad-quality selectors plus
-Scale/Intervals/Triads layer checkboxes. The default view (A Minor Pentatonic)
-is shown on the fretboard; changing a selector or toggling a layer updates it.
-With the Triads layer enabled, the Prev/Next buttons step through the detected
-voicings of the selected triad.
+This opens a window with tuning, root, scale, and triad-quality selectors plus
+Scale/Intervals/Triads layer checkboxes. The default view (Standard tuning, A
+Minor Pentatonic) is shown on the fretboard; changing a selector or toggling a
+layer updates it, and picking a different tuning preset re-evaluates every
+enabled layer against the new tuning. With the Triads layer enabled, the
+Prev/Next buttons step through the detected voicings of the selected triad.
 
 To inspect the fretboard model from the command line instead:
 
@@ -155,8 +163,9 @@ See `docs/architecture.md`, `docs/domain-model.md`, and the ADRs in
 - No theoretical interval type yet: `ChromaticInterval` encodes distance only
   (six semitones could be `#4` or `b5`).
 - No capo support yet (planned).
-- The GUI slice is fixed to standard tuning and 12 frets; custom tunings and
-  fret-count controls are not yet exposed.
+- The GUI slice ships with built-in tuning presets (Standard through Drop D /
+  open tunings) but no custom-tuning or fret-count editor yet; the default
+  window shows a 22-fret Standard board.
 - Triad voicings are limited to adjacent-string sets within the default fret
   span; voicing filtering/ranking is future work.
 - No extended chords, progressions, or audio yet.
