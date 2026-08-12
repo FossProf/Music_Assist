@@ -12,11 +12,31 @@ from dataclasses import dataclass
 
 from guitar_app.core.fretboard.fretboard import Fretboard
 
-#: Fret numbers whose marker dots are inlaid into the fretboard.
-FRET_MARKERS: tuple[int, ...] = (3, 5, 7, 9, 12)
+#: Fret offsets within each twelve-fret span that receive a single inlaid dot.
+_SINGLE_MARKER_OFFSETS: tuple[int, ...] = (3, 5, 7, 9)
 
 #: Fraction of the smallest cell dimension used for a note marker's radius.
 _MARKER_SCALE = 0.34
+
+
+def fret_markers(fret_count: int) -> tuple[int, ...]:
+    """Return the single-marker fret numbers inlaid on a ``fret_count`` fretboard.
+
+    Markers repeat every twelve frets (3/5/7/9, then 15/17/19/21, ...) so the
+    neck stays readable past the 12th fret; frets above ``fret_count`` are
+    omitted. The double octave markers (12, 24, ...) are reported separately by
+    :func:`double_marker_frets`.
+    """
+    return tuple(fret for fret in range(1, fret_count + 1) if fret % 12 in _SINGLE_MARKER_OFFSETS)
+
+
+def double_marker_frets(fret_count: int) -> tuple[int, ...]:
+    """Return the double-marker fret numbers for a ``fret_count`` fretboard.
+
+    The 12th fret and every subsequent multiple of 12 (24, ...) carry two
+    stacked inlaid dots.
+    """
+    return tuple(range(12, fret_count + 1, 12))
 
 
 @dataclass(frozen=True, slots=True)

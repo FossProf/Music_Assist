@@ -24,7 +24,12 @@ from PySide6.QtWidgets import QWidget
 
 from guitar_app.core.fretboard.fretboard import Fretboard, FretPosition
 from guitar_app.core.theory.triad import TriadInversion
-from guitar_app.ui.geometry import FRET_MARKERS, FretboardGeometry, fretboard_geometry
+from guitar_app.ui.geometry import (
+    FretboardGeometry,
+    double_marker_frets,
+    fret_markers,
+    fretboard_geometry,
+)
 from guitar_app.ui.render_annotations import (
     FretboardRenderAnnotation,
     RenderRole,
@@ -210,16 +215,14 @@ class FretboardWidget(QWidget):
         painter.setPen(QPen(Qt.PenStyle.NoPen))
         radius = geometry.row_height * 0.18
         mid_y = geometry.top + geometry.height / 2
-        for fret in FRET_MARKERS:
-            if fret > geometry.fret_count:
-                continue
+        for fret in fret_markers(geometry.fret_count):
             x = geometry.x_for_fret(fret)
-            if fret == 12:
-                offset = radius * 1.9
-                painter.drawEllipse(QPointF(x, mid_y - offset), radius, radius)
-                painter.drawEllipse(QPointF(x, mid_y + offset), radius, radius)
-            else:
-                painter.drawEllipse(QPointF(x, mid_y), radius, radius)
+            painter.drawEllipse(QPointF(x, mid_y), radius, radius)
+        offset = radius * 1.9
+        for fret in double_marker_frets(geometry.fret_count):
+            x = geometry.x_for_fret(fret)
+            painter.drawEllipse(QPointF(x, mid_y - offset), radius, radius)
+            painter.drawEllipse(QPointF(x, mid_y + offset), radius, radius)
         painter.restore()
 
     def _draw_annotations(self, painter: QPainter, geometry: FretboardGeometry) -> None:

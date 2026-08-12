@@ -225,9 +225,11 @@ data and service results, and performs no theory calculations.
   paints a `tuple[FretboardRenderAnnotation, ...]` on a fretboard and
   optionally highlights one `TriadVoicingRenderGroup`; it knows nothing about
   scale-, interval-, or triad-domain annotation types. It draws strings, frets
-  (with a distinct nut), inlaid fret markers at 3/5/7/9/12, and markers for
-  the annotations; open-string (fret 0) markers are hollow rings to keep fret
-  0 unambiguous. When multiple annotations share a position, the first in
+  (with a distinct nut), fret-count-aware inlaid fret markers (single dots at
+  3/5/7/9 and every twelve-fret span thereafter — 15/17/19/21 on the default
+  22-fret board — plus double dots at 12 and each multiple of 12), and markers
+  for the annotations; open-string (fret 0) markers are hollow rings to keep
+  fret 0 unambiguous. When multiple annotations share a position, the first in
   layer order (scale, then interval, then triad) is the centered primary
   marker and every additional one is a smaller offset badge arranged around
   it, so no annotation is discarded. The active voicing group is drawn as a

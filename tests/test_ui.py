@@ -25,7 +25,12 @@ from guitar_app.services.triad_service import (
 )
 from guitar_app.ui import main_window as main_window_module
 from guitar_app.ui.fretboard_widget import FretboardWidget
-from guitar_app.ui.geometry import FRET_MARKERS, FretboardGeometry, fretboard_geometry
+from guitar_app.ui.geometry import (
+    FretboardGeometry,
+    double_marker_frets,
+    fret_markers,
+    fretboard_geometry,
+)
 from guitar_app.ui.main_window import MainWindow
 from guitar_app.ui.render_annotations import (
     RenderRole,
@@ -75,8 +80,16 @@ class TestFretboardGeometry:
         assert geometry.fret_count == 24
         assert geometry.x_for_fret(24) > geometry.x_for_fret(12)
 
-    def test_fret_markers_are_the_expected_frets(self) -> None:
-        assert FRET_MARKERS == (3, 5, 7, 9, 12)
+    def test_fret_markers_are_fret_count_aware(self) -> None:
+        assert fret_markers(12) == (3, 5, 7, 9)
+        assert double_marker_frets(12) == (12,)
+        assert fret_markers(22) == (3, 5, 7, 9, 15, 17, 19, 21)
+        assert double_marker_frets(22) == (12,)
+        assert fret_markers(24) == (3, 5, 7, 9, 15, 17, 19, 21)
+        assert double_marker_frets(24) == (12, 24)
+        assert fret_markers(27) == (3, 5, 7, 9, 15, 17, 19, 21, 27)
+        assert fret_markers(5) == (3, 5)
+        assert double_marker_frets(5) == ()
 
     def test_fret_out_of_range_raises(self) -> None:
         geometry = fretboard_geometry(WINDOW_TEST_BOARD, 800.0, 400.0)
