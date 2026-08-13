@@ -39,6 +39,12 @@ or audio devices.
   model (root + quality formula → ordered chord tones). Purely theoretical:
   no register, string, or tuning data (see `core.fretboard` for the guitar-side
   voicing model).
+- `Mode` — the seven modes of the major scale, bound to the existing named
+  scale-formula catalog, plus the parallel/relative relationship helpers
+  (`parallel_mode`, `relative_mode`, `parent_major_root_for`) and per-mode
+  `altered_degrees_from_ionian` metadata. Purely theoretical: no fretboard,
+  instrument, or UI concepts (see `services.mode_service` for the
+  application-facing wrapper).
 - A theoretical `Interval` type that distinguishes enharmonic spellings
   (diminished fifth vs augmented fourth, compound intervals, ...) is planned
   but intentionally not implemented yet.
@@ -176,6 +182,34 @@ tuning preset catalog -> InstrumentState -> Fretboard -> services/layers
 `InstrumentState` is **not yet persistent** and **not UI state**. Existing
 musical services keep accepting a `Fretboard` and never depend on it.
 
+### services.mode_service — modal exploration
+
+Resolves the musical modal context for the future Mode Explorer. It wraps the
+pure-theory `core.theory.mode` relationships (`Mode`, `parallel_mode`,
+`relative_mode`, `parent_major_root_for`) in a small immutable result and
+deliberately resolves **no fretboard data** — the UI will drive the existing
+musical services from `ModeSelection.modal_root` and the mode's stable scale
+ID.
+
+- `ModeView` — the application-facing view distinction, kept out of Qt.
+  `PARALLEL` (label `"Parallel"`) and `RELATIVE` (label `"Relative"`), in that
+  stable order via `available_mode_views()`.
+- `ModeSelection` — frozen; `view`, `mode`, `input_root`, `modal_root`,
+  `parent_major_root`, `scale`, and `altered_degrees_from_ionian` (passed
+  through unchanged from the theory model).
+- `evaluate_mode(root, mode, view)` — resolves one view of one mode from one
+  input root. Root semantics are explicit and intentionally differ:
+
+  ```
+  Parallel: root selector = modal root     (e.g. A Dorian -> modal A, parent G)
+  Relative: root selector = parent-major root (e.g. C Dorian -> modal D, parent C)
+  ```
+
+  The parallel view derives the parent-major root via `parent_major_root_for`;
+  the relative view derives the modal root via `relative_mode`.
+- `available_modes()` — the seven modes in canonical order, delegating to the
+  theory catalog.
+
 Services depend on `core`; **`core` never imports `services`**.
 
 **Standing objective — AI/agent access.** User-facing musical operations are
@@ -293,9 +327,10 @@ application is the primary entry point (`guitar-app`).
 - **services** — application-level services that orchestrate the core engines
   on behalf of the UI. `evaluate_scale`, `available_scale_formulas`,
   `evaluate_intervals`, `evaluate_triad`, `available_triad_qualities`,
-  `instrument_from_tuning_id`, `instrument_from_string_pitches`, and
-  `InstrumentState` are implemented; more operations (progressions) will be
-  added.
+  `instrument_from_tuning_id`, `instrument_from_string_pitches`,
+  `InstrumentState`, and the modal-exploration service (`ModeView`,
+  `ModeSelection`, `evaluate_mode`) are implemented; more operations
+  (progressions) will be added.
 
 ## Domain boundaries
 
@@ -311,6 +346,7 @@ application is the primary entry point (`guitar-app`).
 | Layers                 | core.layers          | theory, instrument, fretboard |
 | Services               | services             | core engines (any)       |
 | InstrumentState        | services             | core.instrument, core.fretboard |
+| Mode, mode service     | core.theory, services | core.theory only        |
 | Layer controls         | ui.layer_controls     | nothing (UI model)       |
 | Render annotations     | ui.render_annotations | core.layers, core.fretboard |
 | Rendering geometry     | ui.geometry          | core.fretboard (coords)  |
