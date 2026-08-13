@@ -173,6 +173,90 @@ scale_formula_by_id("dorian")  # the Dorian entry
 - No aliases, fuzzy search, localization, user-defined catalogs, persistence,
   or categories yet.
 
+## Mode, parallel and relative relationships
+
+A `Mode` is a typed enum for the seven modes of the major scale, each bound to
+its existing `NamedScaleFormula` catalog entry — no formulas are redefined.
+
+```python
+from guitar_app.core.theory.mode import (
+    Mode,
+    available_modes,
+    parallel_mode,
+    relative_mode,
+    parent_major_root_for,
+)
+
+Mode.DORIAN.id  # "dorian"
+Mode.DORIAN.display_name  # "Dorian"
+Mode.DORIAN.degree  # 2 — the mode's degree within the parent major scale
+Mode.DORIAN.scale_formula  # the catalog's DORIAN NamedScaleFormula
+Mode.DORIAN.altered_degrees_from_ionian  # (b3, b7) as ScaleDegrees
+```
+
+- Members are declared in canonical order: Ionian, Dorian, Phrygian, Lydian,
+  Mixolydian, Aeolian, Locrian. `available_modes()` returns them in that order.
+- Each mode exposes a stable snake_case `id`, a human-readable `display_name`,
+  its `degree` (1..7) within the parent major scale, the associated catalog
+  `NamedScaleFormula` (`scale_formula` — the same instance the catalog uses),
+  and `altered_degrees_from_ionian`, the degrees altered relative to Ionian:
+  `()`, `(b3, b7)`, `(b2, b3, b6, b7)`, `(#4,)`, `(b7,)`, `(b3, b6, b7)`,
+  `(b2, b3, b5, b6, b7)`. The altered degrees are **derived** from the mode's
+  formula (every degree with a non-zero alteration), not stored separately, so
+  the metadata can never drift from the formula.
+- Ionian reuses the Major formula and Aeolian reuses Natural Minor, exactly as
+  in the named-formula catalog: the same `ScaleFormula` instance backs both.
+
+**Parallel modes — same root, different formula.** The scale is built on the
+same tonal root with the mode's formula:
+
+```python
+parallel_mode(PitchClass.A, Mode.IONIAN)  # A Ionian:  A B C# D E F# G#
+parallel_mode(PitchClass.A, Mode.DORIAN)  # A Dorian:  A B C D E F# G
+parallel_mode(PitchClass.A, Mode.PHRYGIAN)  # A Phrygian: A Bb C D E F G
+```
+
+**Relative modes — same pitch collection, different tonal center.** The modal
+root is derived from the parent major scale's natural degree offsets (the
+existing major-scale degree table), never a hard-coded pitch-name table:
+
+```python
+relative_mode(PitchClass.C, Mode.DORIAN)  # D Dorian
+relative_mode(PitchClass.C, Mode.AEOLIAN)  # A Aeolian
+relative_mode(PitchClass.C, Mode.LOCRIAN)  # B Locrian
+```
+
+**Parent-major reverse relationship.** `parent_major_root_for(modal_root, mode)`
+returns the major-scale root that contains the modal root as the mode's degree:
+
+```python
+parent_major_root_for(PitchClass.D, Mode.DORIAN)  # C
+parent_major_root_for(PitchClass.A, Mode.AEOLIAN)  # C
+parent_major_root_for(PitchClass.G, Mode.MIXOLYDIAN)  # C
+```
+
+The relationship round-trips: for every parent root and mode,
+`parent_major_root_for(relative_mode(parent, mode).root, mode) == parent`, and
+the reverse direction holds too. These pure-theory helpers keep the future Mode
+Explorer's parallel/relative view switching in the domain layer instead of
+recomputing relationships in Qt code.
+
+The degree formulas are pinned exactly:
+
+| Mode       | Formula                 | Altered vs Ionian          |
+| ---------- | ----------------------- | -------------------------- |
+| Ionian     | 1 2 3 4 5 6 7           |                            |
+| Dorian     | 1 2 b3 4 5 6 b7         | b3, b7                     |
+| Phrygian   | 1 b2 b3 4 5 b6 b7       | b2, b3, b6, b7             |
+| Lydian     | 1 2 3 #4 5 6 7          | #4                         |
+| Mixolydian | 1 2 3 4 5 6 b7          | b7                         |
+| Aeolian    | 1 2 b3 4 5 b6 b7        | b3, b6, b7                 |
+| Locrian    | 1 b2 b3 4 b5 b6 b7      | b2, b3, b5, b6, b7         |
+
+Mode is pure theory: it references only `PitchClass`, `Scale`, `ScaleDegree`,
+and the scale-formula catalog, and adds no fretboard, instrument, service, or
+UI concepts.
+
 ## Triad, TriadTone, TriadQuality
 
 The pure theory model of a triad: what a triad *is* (root, quality, chord-tone
