@@ -193,8 +193,8 @@ class FretboardWidget(QWidget):
             else:
                 painter.setPen(QPen(FRET_COLOR, 1.0))
             painter.drawLine(
-                QPointF(x, geometry.top),
-                QPointF(x, geometry.top + geometry.height),
+                QPointF(x, geometry.neck_top(x)),
+                QPointF(x, geometry.neck_bottom(x)),
             )
         painter.restore()
 
@@ -202,10 +202,9 @@ class FretboardWidget(QWidget):
         painter.save()
         painter.setPen(QPen(STRING_COLOR, 1.0))
         for string_number in range(1, geometry.string_count + 1):
-            y = geometry.y_for_string(string_number)
             painter.drawLine(
-                QPointF(geometry.left, y),
-                QPointF(geometry.left + geometry.width, y),
+                QPointF(geometry.nut_x, geometry.y_for_string(string_number, geometry.nut_x)),
+                QPointF(geometry.right, geometry.y_for_string(string_number, geometry.right)),
             )
         painter.restore()
 
@@ -213,8 +212,8 @@ class FretboardWidget(QWidget):
         painter.save()
         painter.setBrush(QBrush(MARKER_COLOR))
         painter.setPen(QPen(Qt.PenStyle.NoPen))
-        radius = geometry.row_height * 0.18
-        mid_y = geometry.top + geometry.height / 2
+        radius = geometry.row_height() * 0.18
+        mid_y = geometry.mid_y()
         for fret in fret_markers(geometry.fret_count):
             x = geometry.x_for_fret(fret)
             painter.drawEllipse(QPointF(x, mid_y), radius, radius)
@@ -354,7 +353,7 @@ class FretboardWidget(QWidget):
             sum(point.y() for point in centers) / len(centers),
         )
         font = painter.font()
-        font.setPixelSize(max(8, int(geometry.row_height * 0.4)))
+        font.setPixelSize(max(8, int(geometry.row_height() * 0.4)))
         painter.setFont(font)
         painter.setPen(QPen(VOICING_GROUP_PEN))
         painter.drawText(
@@ -370,7 +369,5 @@ class FretboardWidget(QWidget):
         painter.restore()
 
     def _center(self, geometry: FretboardGeometry, position: FretPosition) -> QPointF:
-        return QPointF(
-            geometry.x_for_fret(position.fret),
-            geometry.y_for_string(position.string_number),
-        )
+        x = geometry.x_for_fret(position.fret)
+        return QPointF(x, geometry.y_for_string(position.string_number, x))

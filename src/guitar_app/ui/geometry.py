@@ -4,6 +4,19 @@ Deliberately free of PySide6 so the layout math can be unit tested without a
 QApplication or a display. It maps domain (string number, fret) pairs to
 pixel-style coordinates inside a widget drawing area; the core/domain objects
 themselves never store coordinates.
+
+The fretboard is laid out like a real neck:
+
+- Strings run **string 1 (high E) at the top** down to the lowest string at the
+  bottom, matching tab reading order.
+- Fret lines follow the 12-tone equal temperament formula, so each fret space
+  is ``2 ** (-1/12)`` of the one below it and the 12th fret line sits exactly
+  halfway along the scale length.
+- A gutter left of the nut holds the open-string (fret 0) markers.
+- The neck tapers: it is ``_BODY_GROWTH`` times as tall at the last fret as at
+  the nut.
+- Proportions (scale length : neck height) are fixed, so the fretboard is
+  letterboxed (scaled and centered) inside the widget instead of distorted.
 """
 
 from __future__ import annotations
@@ -17,6 +30,15 @@ _SINGLE_MARKER_OFFSETS: tuple[int, ...] = (3, 5, 7, 9)
 
 #: Fraction of the smallest cell dimension used for a note marker's radius.
 _MARKER_SCALE = 0.34
+
+#: Gutter left of the nut, as a fraction of the scale length.
+_OPEN_GUTTER_FRACTION = 0.08
+
+#: Neck height at the nut per string, as a fraction of the scale length.
+_NUT_HEIGHT_PER_STRING = 0.07
+
+#: Ratio of the neck height at the last fret to the neck height at the nut.
+_BODY_GROWTH = 1.15
 
 
 def fret_markers(fret_count: int) -> tuple[int, ...]:
@@ -43,48 +65,109 @@ def double_marker_frets(fret_count: int) -> tuple[int, ...]:
 class FretboardGeometry:
     """Layout of a fretboard inside a drawing area.
 
-    The fretboard spans ``fret_count + 1`` uniform cells (fret 0 is the
-    open-string area, frets 1..``fret_count`` follow), each ``cell_width``
-    wide, and ``string_count`` horizontal rows each ``row_height`` tall.
-    Strings are laid out low to high: the highest string number sits at the
-    top, matching a player's view of the neck.
+    The drawing box spans ``left``..``left + width`` horizontally and includes
+    the open-string gutter plus the fretted neck. ``left`` is the box's left
+    edge, ``open_span`` the gutter reserved for open-string markers, and
+    ``scale_length`` the horizontal span from the nut to the box's right edge
+    (where the strings run toward the body). ``nut_x`` is the x of the nut.
+    Vertically, ``top`` is the y of the neck's top edge at the nut;
+    ``nut_height`` and ``body_height`` are the neck's height there and at the
+    right edge. The neck tapers linearly between them about the constant
+    centerline :meth:`mid_y`.
+
+    String 1 (high E) is the topmost string, matching tab reading order.
     """
 
     string_count: int
     fret_count: int
-    cell_width: float
-    row_height: float
     left: float
+    open_span: float
+    scale_length: float
     top: float
+    nut_height: float
+    body_height: float
+
+    @property
+    def nut_x(self) -> float:
+        """The x of the nut (the last fret line, fret 0)."""
+        return self.left + self.open_span
+
+    @property
+    def right(self) -> float:
+        """The x of the drawing box's right edge, where the strings end."""
+        return self.left + self.open_span + self.scale_length
 
     @property
     def width(self) -> float:
-        """Width of the fretboard drawing area."""
-        return (self.fret_count + 1) * self.cell_width
+        """Width of the drawing box (gutter plus fretted span)."""
+        return self.open_span + self.scale_length
 
     @property
     def height(self) -> float:
-        """Height of the fretboard drawing area."""
-        return self.string_count * self.row_height
+        """Tallest the fretboard gets (the neck height at the right edge)."""
+        return max(self.nut_height, self.body_height)
 
     def x_for_fret(self, fret: int) -> float:
-        """Return the center x of the cell for ``fret`` (0..fret_count)."""
+        """Return the marker x for ``fret`` (0..fret_count).
+
+        Open-string positions sit in the gutter left of the nut; a fretted
+        position is centered in the space between its fret line and the
+        previous one.
+        """
         self._validate_fret(fret)
-        return self.left + (fret + 0.5) * self.cell_width
+        if fret == 0:
+            return self.left + self.open_span / 2
+        previous = self.x_for_fret_line(fret - 1)
+        current = self.x_for_fret_line(fret)
+        return previous + (current - previous) / 2
 
     def x_for_fret_line(self, fret: int) -> float:
         """Return the x of the fret line for ``fret`` (0 is the nut)."""
         self._validate_fret(fret)
-        return self.left + (fret + 1) * self.cell_width
+        if fret == 0:
+            return self.nut_x
+        return self.nut_x + self.scale_length * (1 - 2 ** (-fret / 12))
 
-    def y_for_string(self, string_number: int) -> float:
-        """Return the center y of ``string_number`` (1..string_count)."""
+    def y_for_string(self, string_number: int, x: float | None = None) -> float:
+        """Return the center y of ``string_number`` (1..string_count) at ``x``.
+
+        With no ``x`` the nut cross-section is used. String 1 (high E) is the
+        topmost string; strings spread apart toward the body where the neck
+        tapers.
+        """
         self._validate_string(string_number)
-        return self.top + (self.string_count - string_number + 0.5) * self.row_height
+        height = self._neck_height(self.nut_x if x is None else x)
+        offset = (string_number - 0.5) / self.string_count
+        return self.mid_y() - height / 2 + height * offset
+
+    def mid_y(self) -> float:
+        """Return the y of the neck's constant centerline."""
+        return self.top + self.nut_height / 2
+
+    def neck_top(self, x: float) -> float:
+        """Return the y of the neck's top edge at ``x``."""
+        return self.mid_y() - self._neck_height(x) / 2
+
+    def neck_bottom(self, x: float) -> float:
+        """Return the y of the neck's bottom edge at ``x``."""
+        return self.mid_y() + self._neck_height(x) / 2
+
+    def row_height(self) -> float:
+        """Height of one string row at the nut."""
+        return self.nut_height / self.string_count
 
     def marker_radius(self) -> float:
-        """Radius used for note markers, derived from the cell dimensions."""
-        return min(self.cell_width, self.row_height) * _MARKER_SCALE
+        """Radius used for note markers, derived from the neck proportions."""
+        mean_cell = self.scale_length
+        if self.fret_count >= 1:
+            mean_cell = self.scale_length * (1 - 2 ** (-self.fret_count / 12)) / self.fret_count
+        cell = min(self.row_height(), mean_cell, self.open_span * 0.5)
+        return cell * _MARKER_SCALE
+
+    def _neck_height(self, x: float) -> float:
+        fraction = (x - self.nut_x) / self.scale_length if self.scale_length else 0.0
+        fraction = min(max(fraction, 0.0), 1.0)
+        return self.nut_height + (self.body_height - self.nut_height) * fraction
 
     def _validate_fret(self, fret: int) -> None:
         if fret < 0 or fret > self.fret_count:
@@ -104,19 +187,31 @@ def fretboard_geometry(
     *,
     margin: float = 8.0,
 ) -> FretboardGeometry:
-    """Compute geometry for ``fretboard`` that fits inside ``width`` x ``height``.
+    """Compute geometry for ``fretboard`` letterboxed inside ``width`` x ``height``.
 
-    Cells are uniform and ``margin`` is kept even on all sides. The open-string
-    cell is the same width as every fretted cell, so the nut sits exactly one
-    cell from the left edge.
+    The fretboard keeps fixed proportions (a tapered neck whose total width is
+    ``1 + _OPEN_GUTTER_FRACTION`` times its tallest height), so it is scaled to
+    fit the binding axis and centered, keeping ``margin`` even on every side.
     """
     available_width = max(width - 2 * margin, 1.0)
     available_height = max(height - 2 * margin, 1.0)
+
+    string_count = fretboard.tuning.string_count
+    gutter = _OPEN_GUTTER_FRACTION
+    nut_height = _NUT_HEIGHT_PER_STRING * string_count
+    body_height = nut_height * _BODY_GROWTH
+    total_width = 1.0 + gutter
+    max_height = max(nut_height, body_height)
+
+    scale = min(available_width / total_width, available_height / max_height)
+
     return FretboardGeometry(
-        string_count=fretboard.tuning.string_count,
+        string_count=string_count,
         fret_count=fretboard.fret_count,
-        cell_width=available_width / (fretboard.fret_count + 1),
-        row_height=available_height / fretboard.tuning.string_count,
-        left=margin,
-        top=margin,
+        left=margin + (available_width - total_width * scale) / 2,
+        open_span=gutter * scale,
+        scale_length=scale,
+        top=margin + (available_height - max_height * scale) / 2,
+        nut_height=nut_height * scale,
+        body_height=body_height * scale,
     )

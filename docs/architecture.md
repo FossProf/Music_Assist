@@ -314,7 +314,12 @@ data and service results, and performs no theory calculations.
 - `ui.geometry` — UI-only layout math mapping domain `(string_number, fret)`
   pairs to widget coordinates. It is deliberately free of PySide6 so the
   coordinate mapping is unit-testable without a display; pixel coordinates are
-  never stored in core/domain objects.
+  never stored in core/domain objects. The fretboard is laid out like a real
+  neck: string 1 (high E) at the top (tab reading order), fret lines placed by
+  the 12-tone equal-temperament formula (the 12th fret is exactly half the
+  scale length), an open-string gutter left of the nut, and a neck that tapers
+  wider toward the body. Proportions are fixed, so the fretboard is letterboxed
+  (scaled and centered) inside the widget rather than stretched to fill it.
 
 The UI may import `core` domain types and `services`; **`core` and `services`
 never import `ui` or PySide6**.

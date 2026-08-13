@@ -76,12 +76,12 @@ class TestFretboardGeometry:
 
     def test_strings_are_ordered_top_to_bottom(self) -> None:
         geometry = fretboard_geometry(WINDOW_TEST_BOARD, 800.0, 400.0)
-        assert geometry.y_for_string(6) < geometry.y_for_string(5) < geometry.y_for_string(1)
-        assert geometry.y_for_string(6) < geometry.y_for_string(1)
+        assert geometry.y_for_string(1) < geometry.y_for_string(2) < geometry.y_for_string(6)
+        assert geometry.y_for_string(1) < geometry.y_for_string(6)
 
     def test_string_orientation_matches_domain_order(self) -> None:
         geometry = fretboard_geometry(WINDOW_TEST_BOARD, 800.0, 400.0)
-        ys = [geometry.y_for_string(number) for number in range(6, 0, -1)]
+        ys = [geometry.y_for_string(number) for number in range(1, 7)]
         assert ys == sorted(ys)
 
     def test_fret_centers_are_monotonic_and_open_area_is_left_of_nut(self) -> None:
@@ -91,10 +91,73 @@ class TestFretboardGeometry:
         assert geometry.x_for_fret(0) < geometry.x_for_fret_line(0)
         assert geometry.x_for_fret(1) > geometry.x_for_fret_line(0)
 
-    def test_fret_lines_are_monotonic(self) -> None:
+    def test_fret_lines_are_monotonic_and_span_the_scale(self) -> None:
         geometry = fretboard_geometry(WINDOW_TEST_BOARD, 800.0, 400.0)
         assert geometry.x_for_fret_line(0) < geometry.x_for_fret_line(1)
-        assert geometry.x_for_fret_line(12) == geometry.left + 13 * geometry.cell_width
+        assert geometry.x_for_fret_line(0) == geometry.nut_x
+        assert geometry.x_for_fret_line(geometry.fret_count) < geometry.right
+
+    def test_octave_fret_is_half_the_scale_length(self) -> None:
+        geometry = fretboard_geometry(Fretboard(STANDARD, 24), 800.0, 400.0)
+        assert geometry.x_for_fret_line(12) == pytest.approx(
+            geometry.nut_x + geometry.scale_length / 2
+        )
+
+    def test_fret_spacing_follows_twelve_tet(self) -> None:
+        geometry = fretboard_geometry(WINDOW_TEST_BOARD, 800.0, 400.0)
+
+        def spacing(fret: int) -> float:
+            return geometry.x_for_fret_line(fret + 1) - geometry.x_for_fret_line(fret)
+
+        first = spacing(1)
+        assert spacing(2) / first == pytest.approx(2 ** (-1 / 12))
+        assert spacing(12) / spacing(11) == pytest.approx(2 ** (-1 / 12))
+        assert spacing(21) / spacing(20) == pytest.approx(2 ** (-1 / 12))
+        assert first > spacing(12)
+
+    def test_neck_taper_widens_toward_the_body(self) -> None:
+        geometry = fretboard_geometry(WINDOW_TEST_BOARD, 800.0, 400.0)
+        assert geometry.nut_height < geometry.body_height
+        assert geometry.neck_bottom(geometry.right) > geometry.neck_bottom(geometry.left)
+        assert geometry.neck_top(geometry.right) < geometry.neck_top(geometry.left)
+        mid = geometry.mid_y()
+        assert abs(geometry.y_for_string(1, geometry.right) - mid) > abs(
+            geometry.y_for_string(1, geometry.left) - mid
+        )
+        assert abs(geometry.y_for_string(6, geometry.right) - mid) > abs(
+            geometry.y_for_string(6, geometry.left) - mid
+        )
+
+    def test_open_string_markers_sit_in_the_gutter_left_of_the_nut(self) -> None:
+        geometry = fretboard_geometry(WINDOW_TEST_BOARD, 800.0, 400.0)
+        assert geometry.x_for_fret(0) < geometry.x_for_fret_line(0)
+        assert geometry.x_for_fret(0) >= geometry.left
+
+    def test_aspect_ratio_is_fixed_regardless_of_widget_shape(self) -> None:
+        geometries = [
+            fretboard_geometry(WINDOW_TEST_BOARD, widget_width, widget_height)
+            for widget_width, widget_height in ((1200.0, 400.0), (800.0, 400.0), (800.0, 800.0))
+        ]
+        aspects = [geometry.width / geometry.height for geometry in geometries]
+        assert aspects[0] == pytest.approx(aspects[1])
+        assert aspects[1] == pytest.approx(aspects[2])
+
+    def test_letterboxing_centers_the_fretboard_in_the_widget(self) -> None:
+        wide = fretboard_geometry(WINDOW_TEST_BOARD, 800.0, 400.0)
+        assert wide.left == pytest.approx(8.0)
+        assert wide.left + wide.width == pytest.approx(800.0 - 8.0)
+        assert wide.top > 8.0  # width binds, so the neck is centered vertically
+        short = fretboard_geometry(WINDOW_TEST_BOARD, 2000.0, 300.0)
+        assert short.top == pytest.approx(8.0)
+        assert short.top + short.height == pytest.approx(300.0 - 8.0)
+        assert short.left > 8.0  # height binds, so the neck is centered horizontally
+
+    def test_letterboxed_fretboard_fits_within_margins(self) -> None:
+        geometry = fretboard_geometry(WINDOW_TEST_BOARD, 800.0, 400.0, margin=12.0)
+        assert geometry.left >= 12.0
+        assert geometry.top >= 12.0
+        assert geometry.left + geometry.width <= 800.0 - 12.0
+        assert geometry.top + geometry.height <= 400.0 - 12.0
 
     def test_respects_fret_count(self) -> None:
         geometry = fretboard_geometry(Fretboard(STANDARD, 24), 800.0, 400.0)
