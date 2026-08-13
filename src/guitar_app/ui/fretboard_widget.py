@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
     QBrush,
-    QColor,
     QPainter,
     QPaintEvent,
     QPen,
@@ -30,37 +29,38 @@ from guitar_app.ui.geometry import (
     fret_markers,
     fretboard_geometry,
 )
+from guitar_app.ui.palette import (
+    BACKGROUND_COLOR,
+    BADGE_FILL,
+    BADGE_OUTLINE,
+    BADGE_TEXT,
+    DEGREE_FILL,
+    DEGREE_TEXT,
+    FRET_COLOR,
+    INTERVAL_FILL,
+    INTERVAL_OUTLINE,
+    INTERVAL_ROOT_FILL,
+    INTERVAL_ROOT_TEXT,
+    INTERVAL_TEXT,
+    MARKER_COLOR,
+    NUT_COLOR,
+    OPEN_PEN,
+    STRING_COLOR,
+    TONIC_FILL,
+    TONIC_TEXT,
+    TRIAD_FILL,
+    TRIAD_OUTLINE,
+    TRIAD_ROOT_FILL,
+    TRIAD_ROOT_TEXT,
+    TRIAD_TEXT,
+    VOICING_GROUP_FILL,
+    VOICING_GROUP_PEN,
+)
 from guitar_app.ui.render_annotations import (
     FretboardRenderAnnotation,
     RenderRole,
     TriadVoicingRenderGroup,
 )
-
-_BACKGROUND_COLOR = QColor("#ffffff")
-_NUT_COLOR = QColor("#2b2b2b")
-_FRET_COLOR = QColor("#c9c9c9")
-_STRING_COLOR = QColor("#8a8a8a")
-_MARKER_COLOR = QColor("#d9d9d9")
-_TONIC_FILL = QColor("#1f6fb2")
-_TONIC_TEXT = QColor("#ffffff")
-_DEGREE_FILL = QColor("#c5dcf0")
-_DEGREE_TEXT = QColor("#1a3550")
-_OPEN_PEN = QColor("#1f6fb2")
-_INTERVAL_FILL = QColor("#f2e4d0")
-_INTERVAL_TEXT = QColor("#5a4632")
-_INTERVAL_OUTLINE = QColor("#b9a082")
-_INTERVAL_ROOT_FILL = QColor("#b26a1f")
-_INTERVAL_ROOT_TEXT = QColor("#ffffff")
-_BADGE_FILL = QColor("#ffffff")
-_BADGE_TEXT = QColor("#4a3f33")
-_BADGE_OUTLINE = QColor("#8a7a6a")
-_TRIAD_FILL = QColor("#7db87d")
-_TRIAD_TEXT = QColor("#1d3a1d")
-_TRIAD_OUTLINE = QColor("#5a8f5a")
-_TRIAD_ROOT_FILL = QColor("#2f7d32")
-_TRIAD_ROOT_TEXT = QColor("#ffffff")
-_VOICING_GROUP_PEN = QColor("#4d8f4d")
-_VOICING_GROUP_FILL = QColor(70, 130, 70, 36)
 
 #: Fraction of a primary marker radius used for the secondary badge radius.
 _BADGE_SCALE = 0.55
@@ -153,7 +153,7 @@ class FretboardWidget(QWidget):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), _BACKGROUND_COLOR)
+        painter.fillRect(self.rect(), BACKGROUND_COLOR)
         geometry = fretboard_geometry(self._fretboard, float(self.width()), float(self.height()))
         self._draw_fret_lines(painter, geometry)
         self._draw_strings(painter, geometry)
@@ -189,9 +189,9 @@ class FretboardWidget(QWidget):
         for fret in range(geometry.fret_count + 1):
             x = geometry.x_for_fret_line(fret)
             if fret == 0:
-                painter.setPen(QPen(_NUT_COLOR, 4.0))
+                painter.setPen(QPen(NUT_COLOR, 4.0))
             else:
-                painter.setPen(QPen(_FRET_COLOR, 1.0))
+                painter.setPen(QPen(FRET_COLOR, 1.0))
             painter.drawLine(
                 QPointF(x, geometry.top),
                 QPointF(x, geometry.top + geometry.height),
@@ -200,7 +200,7 @@ class FretboardWidget(QWidget):
 
     def _draw_strings(self, painter: QPainter, geometry: FretboardGeometry) -> None:
         painter.save()
-        painter.setPen(QPen(_STRING_COLOR, 1.0))
+        painter.setPen(QPen(STRING_COLOR, 1.0))
         for string_number in range(1, geometry.string_count + 1):
             y = geometry.y_for_string(string_number)
             painter.drawLine(
@@ -211,7 +211,7 @@ class FretboardWidget(QWidget):
 
     def _draw_fret_markers(self, painter: QPainter, geometry: FretboardGeometry) -> None:
         painter.save()
-        painter.setBrush(QBrush(_MARKER_COLOR))
+        painter.setBrush(QBrush(MARKER_COLOR))
         painter.setPen(QPen(Qt.PenStyle.NoPen))
         radius = geometry.row_height * 0.18
         mid_y = geometry.top + geometry.height / 2
@@ -248,41 +248,46 @@ class FretboardWidget(QWidget):
         center = self._center(geometry, annotation.position)
         is_open = annotation.position.fret == 0
         if is_open:
-            painter.setBrush(QBrush(_BACKGROUND_COLOR))
+            painter.setBrush(QBrush(BACKGROUND_COLOR))
             if annotation.role in _SCALE_ROLES:
-                outline, text_color = _OPEN_PEN, _DEGREE_TEXT
+                outline, text_color = OPEN_PEN, DEGREE_TEXT
             elif annotation.role in _TRIAD_ROLES:
-                outline, text_color = _TRIAD_OUTLINE, _TRIAD_TEXT
+                outline, text_color = TRIAD_OUTLINE, TRIAD_TEXT
             else:
-                outline, text_color = _INTERVAL_OUTLINE, _INTERVAL_TEXT
+                outline, text_color = INTERVAL_OUTLINE, INTERVAL_TEXT
             painter.setPen(QPen(outline, 2.0))
             painter.drawEllipse(center, radius, radius)
             painter.setPen(QPen(text_color))
         elif annotation.role is RenderRole.SCALE_ROOT:
-            painter.setBrush(QBrush(_TONIC_FILL))
+            painter.setBrush(QBrush(TONIC_FILL))
             painter.setPen(QPen(Qt.PenStyle.NoPen))
             painter.drawEllipse(center, radius, radius)
-            painter.setPen(QPen(_TONIC_TEXT))
+            painter.setPen(QPen(TONIC_TEXT))
         elif annotation.role is RenderRole.SCALE_TONE:
-            painter.setBrush(QBrush(_DEGREE_FILL))
+            painter.setBrush(QBrush(DEGREE_FILL))
             painter.setPen(QPen(Qt.PenStyle.NoPen))
             painter.drawEllipse(center, radius, radius)
-            painter.setPen(QPen(_DEGREE_TEXT))
+            painter.setPen(QPen(DEGREE_TEXT))
         elif annotation.role is RenderRole.INTERVAL_ROOT:
-            painter.setBrush(QBrush(_INTERVAL_ROOT_FILL))
+            painter.setBrush(QBrush(INTERVAL_ROOT_FILL))
             painter.setPen(QPen(Qt.PenStyle.NoPen))
             painter.drawEllipse(center, radius, radius)
-            painter.setPen(QPen(_INTERVAL_ROOT_TEXT))
+            painter.setPen(QPen(INTERVAL_ROOT_TEXT))
         elif annotation.role is RenderRole.TRIAD_ROOT:
-            painter.setBrush(QBrush(_TRIAD_ROOT_FILL))
+            painter.setBrush(QBrush(TRIAD_ROOT_FILL))
             painter.setPen(QPen(Qt.PenStyle.NoPen))
             painter.drawEllipse(center, radius, radius)
-            painter.setPen(QPen(_TRIAD_ROOT_TEXT))
+            painter.setPen(QPen(TRIAD_ROOT_TEXT))
+        elif annotation.role is RenderRole.INTERVAL:
+            painter.setBrush(QBrush(INTERVAL_FILL))
+            painter.setPen(QPen(Qt.PenStyle.NoPen))
+            painter.drawEllipse(center, radius, radius)
+            painter.setPen(QPen(INTERVAL_TEXT))
         else:
-            painter.setBrush(QBrush(_TRIAD_FILL))
+            painter.setBrush(QBrush(TRIAD_FILL))
             painter.setPen(QPen(Qt.PenStyle.NoPen))
             painter.drawEllipse(center, radius, radius)
-            painter.setPen(QPen(_TRIAD_TEXT))
+            painter.setPen(QPen(TRIAD_TEXT))
         painter.drawText(
             QRectF(
                 center.x() - radius,
@@ -307,13 +312,13 @@ class FretboardWidget(QWidget):
         offset = primary_radius * 0.35 + badge_radius * 0.5
         dx, dy = _BADGE_OFFSETS[badge_index % len(_BADGE_OFFSETS)]
         badge_center = center + QPointF(offset * dx, offset * dy)
-        painter.setBrush(QBrush(_BADGE_FILL))
-        painter.setPen(QPen(_BADGE_OUTLINE, 1.0))
+        painter.setBrush(QBrush(BADGE_FILL))
+        painter.setPen(QPen(BADGE_OUTLINE, 1.0))
         painter.drawEllipse(badge_center, badge_radius, badge_radius)
         font = painter.font()
         font.setPixelSize(max(6, int(badge_radius * 1.1)))
         painter.setFont(font)
-        painter.setPen(QPen(_BADGE_TEXT))
+        painter.setPen(QPen(BADGE_TEXT))
         painter.drawText(
             QRectF(
                 badge_center.x() - badge_radius,
@@ -341,8 +346,8 @@ class FretboardWidget(QWidget):
         centers = [self._center(geometry, position) for position in group.positions]
         polygon = QPolygonF(centers)
         painter.save()
-        painter.setPen(QPen(_VOICING_GROUP_PEN, 1.5))
-        painter.setBrush(QBrush(_VOICING_GROUP_FILL))
+        painter.setPen(QPen(VOICING_GROUP_PEN, 1.5))
+        painter.setBrush(QBrush(VOICING_GROUP_FILL))
         painter.drawPolygon(polygon)
         centroid = QPointF(
             sum(point.x() for point in centers) / len(centers),
@@ -351,7 +356,7 @@ class FretboardWidget(QWidget):
         font = painter.font()
         font.setPixelSize(max(8, int(geometry.row_height * 0.4)))
         painter.setFont(font)
-        painter.setPen(QPen(_VOICING_GROUP_PEN))
+        painter.setPen(QPen(VOICING_GROUP_PEN))
         painter.drawText(
             QRectF(
                 centroid.x() - 24,

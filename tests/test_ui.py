@@ -1460,3 +1460,73 @@ class TestCustomTuningEditor:
         assert not window.fretboard_widget.grab().isNull()
         window.tuning_selector.setCurrentIndex(_tuning_index("dadgad"))
         assert not window.fretboard_widget.grab().isNull()
+
+
+class TestWorkspaceLayout:
+    def test_default_window_size_supports_demo(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window.width() >= 1100
+        assert window.height() >= 600
+
+    def test_window_resizes_without_error(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.resize(700, 400)
+        assert not window.fretboard_widget.grab().isNull()
+        window.resize(1400, 800)
+        assert not window.fretboard_widget.grab().isNull()
+
+    def test_control_column_has_bounded_width(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window._control_scroll.minimumWidth() == 340
+        assert window._control_scroll.maximumWidth() == 340
+
+    def test_legend_lists_marker_colors(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window.legend.legend_items == (
+            ("Root", "#1f6fb2"),
+            ("Scale tone", "#c5dcf0"),
+            ("Interval", "#f2e4d0"),
+            ("Triad tone", "#7db87d"),
+        )
+
+    def test_header_reflects_default_context(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window._workspace_header.title_label.text() == "A Minor Pentatonic"
+        context = window._workspace_header.context_label.text()
+        assert "Standard" in context
+        assert "frets" in context
+
+    def test_header_reflects_root_change(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.root_selector.setCurrentIndex(0)  # C
+        assert window._workspace_header.title_label.text() == "C Minor Pentatonic"
+
+    def test_header_reflects_modal_context(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        assert window._workspace_header.title_label.text() == "A Dorian"
+        assert "Parent Major: G" in window._workspace_header.context_label.text()
+
+    def test_header_reflects_relative_modal_root(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.root_selector.setCurrentIndex(0)  # C
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        assert window._workspace_header.title_label.text() == "D Dorian"
+        assert "Parent Major: C" in window._workspace_header.context_label.text()
+
+    def test_header_reflects_custom_tuning(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        window.tuning_editor.apply_button.click()
+        assert "Custom" in window._workspace_header.context_label.text()
+
+    def test_triad_quality_selector_disabled_while_triads_off(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        assert window.triad_quality_selector.isEnabled() is False
+        window.layer_checkboxes["triad"].setChecked(True)
+        assert window.triad_quality_selector.isEnabled() is True
+        window.layer_checkboxes["triad"].setChecked(False)
+        assert window.triad_quality_selector.isEnabled() is False

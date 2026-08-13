@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSignalBlocker
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
+    QFrame,
     QHBoxLayout,
-    QLabel,
     QMainWindow,
-    QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -47,6 +45,14 @@ from guitar_app.services.scale_service import available_scale_formulas, evaluate
 from guitar_app.services.triad_service import available_triad_qualities, evaluate_triad
 from guitar_app.ui.fretboard_widget import FretboardWidget
 from guitar_app.ui.layer_controls import LAYER_CONTROLS
+from guitar_app.ui.panels import (
+    InstrumentPanel,
+    LayerPanel,
+    LegendWidget,
+    MusicalContextPanel,
+    TriadPanel,
+    WorkspaceHeader,
+)
 from guitar_app.ui.render_annotations import (
     FretboardRenderAnnotation,
     TriadVoicingRenderGroup,
@@ -55,7 +61,6 @@ from guitar_app.ui.render_annotations import (
     render_triad_result,
     render_triad_voicings,
 )
-from guitar_app.ui.tuning_editor import CustomTuningEditor
 
 
 class MainWindow(QMainWindow):
@@ -97,23 +102,45 @@ class MainWindow(QMainWindow):
         self._mode_views: tuple[ModeView, ...] = available_mode_views()
         self._instrument_state: InstrumentState = DEFAULT_INSTRUMENT_STATE
 
-        self.tuning_selector = QComboBox()
-        self.root_selector = QComboBox()
-        self.scale_selector = QComboBox()
-        self.triad_quality_selector = QComboBox()
-        self.mode_selector = QComboBox()
-        self.view_selector = QComboBox()
-        self.layer_checkboxes: dict[str, QCheckBox] = {
-            control.id: QCheckBox(control.name) for control in LAYER_CONTROLS
-        }
-        self.previous_voicing_button = QPushButton("Prev")
-        self.next_voicing_button = QPushButton("Next")
-        self.tuning_label = QLabel()
-        self.selection_label = QLabel()
-        self.mode_label = QLabel()
-        self.voicing_label = QLabel()
-        self.tuning_editor = CustomTuningEditor()
-        self.tuning_editor_button = QPushButton("Edit Tuning…")
+        self._build_panels()
+        self._build_selectors()
+        self._build_layout()
+        self._connect_selectors()
+        self._update_fretboard()
+
+    def _build_panels(self) -> None:
+        """Create the workspace panels and alias their widgets on the window.
+
+        Panels are presentation-only: each builds the widgets of one section.
+        The window keeps the attributes the tests address (``tuning_selector``,
+        ``root_selector``, ``layer_checkboxes``, …) as aliases of the widgets
+        the panels created, so state and signal wiring stay here.
+        """
+        self._instrument_panel = InstrumentPanel()
+        self.tuning_selector = self._instrument_panel.tuning_selector
+        self.tuning_label = self._instrument_panel.tuning_label
+        self.tuning_editor_button = self._instrument_panel.tuning_editor_button
+        self.tuning_editor = self._instrument_panel.tuning_editor
+
+        self._musical_context_panel = MusicalContextPanel()
+        self.root_selector = self._musical_context_panel.root_selector
+        self.scale_selector = self._musical_context_panel.scale_selector
+        self.mode_selector = self._musical_context_panel.mode_selector
+        self.view_selector = self._musical_context_panel.view_selector
+        self.selection_label = self._musical_context_panel.selection_label
+        self.mode_label = self._musical_context_panel.mode_label
+
+        self._layer_panel = LayerPanel()
+        self.layer_checkboxes = self._layer_panel.layer_checkboxes
+
+        self._triad_panel = TriadPanel()
+        self.triad_quality_selector = self._triad_panel.triad_quality_selector
+        self.previous_voicing_button = self._triad_panel.previous_voicing_button
+        self.next_voicing_button = self._triad_panel.next_voicing_button
+        self.voicing_label = self._triad_panel.voicing_label
+
+        self.legend = LegendWidget()
+        self._workspace_header = WorkspaceHeader()
         self.fretboard_widget = FretboardWidget()
 
         self._triad_groups: tuple[TriadVoicingRenderGroup, ...] = ()
@@ -121,11 +148,6 @@ class MainWindow(QMainWindow):
         self._editor_synced_index = -1
         self._scale_index_before_mode: int | None = None
         self._tuning_editor_open = False
-
-        self._build_selectors()
-        self._build_layout()
-        self._connect_selectors()
-        self._update_fretboard()
 
     def _build_selectors(self) -> None:
         for tuning in self._tunings:
@@ -153,43 +175,53 @@ class MainWindow(QMainWindow):
         self._update_view_enabled()
 
     def _build_layout(self) -> None:
-        selectors = QWidget()
-        selectors_layout = QHBoxLayout(selectors)
-        selectors_layout.setContentsMargins(8, 8, 8, 8)
-        selectors_layout.setSpacing(6)
-        selectors_layout.addWidget(QLabel("Tuning:"))
-        selectors_layout.addWidget(self.tuning_selector)
-        selectors_layout.addWidget(QLabel("Root:"))
-        selectors_layout.addWidget(self.root_selector)
-        selectors_layout.addWidget(QLabel("Scale:"))
-        selectors_layout.addWidget(self.scale_selector)
-        selectors_layout.addWidget(QLabel("Quality:"))
-        selectors_layout.addWidget(self.triad_quality_selector)
-        selectors_layout.addWidget(QLabel("Mode:"))
-        selectors_layout.addWidget(self.mode_selector)
-        selectors_layout.addWidget(QLabel("View:"))
-        selectors_layout.addWidget(self.view_selector)
-        for control in LAYER_CONTROLS:
-            selectors_layout.addWidget(self.layer_checkboxes[control.id])
-        selectors_layout.addWidget(self.tuning_label)
-        selectors_layout.addWidget(self.selection_label)
-        selectors_layout.addWidget(self.mode_label)
-        selectors_layout.addWidget(self.tuning_editor_button)
-        selectors_layout.addWidget(self.previous_voicing_button)
-        selectors_layout.addWidget(self.next_voicing_button)
-        selectors_layout.addWidget(self.voicing_label)
-        selectors_layout.addStretch(1)
+        """Arrange the two-column workspace: controls left, fretboard right.
+
+        The control panels sit in a fixed-width scrollable column so the
+        collapsible tuning editor can grow without shrinking the fretboard.
+        The right column holds the workspace header above the fretboard, and a
+        legend bar spans the full window width along the bottom.
+        """
+        left_column = QWidget()
+        left_layout = QVBoxLayout(left_column)
+        left_layout.setContentsMargins(8, 8, 8, 8)
+        left_layout.setSpacing(10)
+        left_layout.addWidget(self._instrument_panel)
+        left_layout.addWidget(self._musical_context_panel)
+        left_layout.addWidget(self._layer_panel)
+        left_layout.addWidget(self._triad_panel)
+        left_layout.addStretch(1)
+
+        self._control_scroll = QScrollArea()
+        self._control_scroll.setWidget(left_column)
+        self._control_scroll.setWidgetResizable(True)
+        self._control_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._control_scroll.setFixedWidth(340)
+        self._control_scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        right_column = QWidget()
+        right_layout = QVBoxLayout(right_column)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(4)
+        right_layout.addWidget(self._workspace_header)
+        right_layout.addWidget(self.fretboard_widget, 1)
+
+        main_row = QHBoxLayout()
+        main_row.setContentsMargins(0, 0, 0, 0)
+        main_row.setSpacing(0)
+        main_row.addWidget(self._control_scroll)
+        main_row.addWidget(right_column, 1)
 
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(selectors)
-        layout.addWidget(self.tuning_editor)
-        layout.addWidget(self.fretboard_widget, 1)
+        layout.addLayout(main_row, 1)
+        layout.addWidget(self.legend)
         self.setCentralWidget(central)
-        self.tuning_editor.setVisible(False)
-        self.resize(900, 420)
+        self.resize(1180, 640)
 
     def _connect_selectors(self) -> None:
         self.tuning_selector.currentIndexChanged.connect(self._update_fretboard)
@@ -240,6 +272,7 @@ class MainWindow(QMainWindow):
             selection = evaluate_mode(root, mode, view)
             effective_root = selection.modal_root
             modal_context = self._modal_context_label(selection)
+        self._update_workspace_header(effective_root, named, selection)
         try:
             annotations, groups = self._enabled_layer_data(
                 fretboard, effective_root, named, quality
@@ -250,9 +283,7 @@ class MainWindow(QMainWindow):
             )
             return
         self.statusBar().clearMessage()
-        self.tuning_label.setText(
-            f"Tuning: {self._instrument_state.display_name or self._instrument_state.tuning.name}"
-        )
+        self.tuning_label.setText(f"Tuning: {self._tuning_name()}")
         self.selection_label.setText(
             self._selection_label(effective_root, named, quality, modal_context)
         )
@@ -366,6 +397,34 @@ class MainWindow(QMainWindow):
         if not parts:
             return f"{root_spelling} — No layers"
         return f"{root_spelling} {' · '.join(parts)}"
+
+    def _tuning_name(self) -> str:
+        """The display name of the active tuning (``Custom`` once edited)."""
+        return self._instrument_state.display_name or self._instrument_state.tuning.name
+
+    def _update_workspace_header(
+        self,
+        root: PitchClass,
+        named: NamedScaleFormula,
+        selection: ModeSelection | None,
+    ) -> None:
+        """Update the title and context lines above the fretboard.
+
+        ``root`` is the effective root (the modal root while a mode is active).
+        The title names the active scale or modal scale; the context line adds
+        the parent-major root in modal context, the tuning, and the fret count.
+        """
+        if selection is not None:
+            title = f"{selection.modal_root.spelling()} {selection.mode.display_name}"
+            context = (
+                f"Parent Major: {selection.parent_major_root.spelling()} · "
+                f"{self._tuning_name()} · {self._instrument_state.fret_count} frets"
+            )
+        else:
+            title = f"{root.spelling()} {named.name}"
+            context = f"{self._tuning_name()} · {self._instrument_state.fret_count} frets"
+        self._workspace_header.set_title(title)
+        self._workspace_header.set_context(context)
 
     def _active_mode(self) -> Mode | None:
         """The active mode, or ``None`` for the identity Ionian selection.
@@ -510,6 +569,7 @@ class MainWindow(QMainWindow):
             self.voicing_label.setText("")
             self.previous_voicing_button.setEnabled(False)
             self.next_voicing_button.setEnabled(False)
+            self.triad_quality_selector.setEnabled(False)
             return
         if not self._triad_groups:
             self.fretboard_widget.set_voicing_group(None)
@@ -527,3 +587,4 @@ class MainWindow(QMainWindow):
         )
         self.previous_voicing_button.setEnabled(True)
         self.next_voicing_button.setEnabled(True)
+        self.triad_quality_selector.setEnabled(True)

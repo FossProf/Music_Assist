@@ -260,7 +260,25 @@ data and service results, and performs no theory calculations.
   translated into a status-bar message. The active voicing index resets to the
   first voicing only when the triad result changes (root, quality, or
   fretboard/tuning), and wraps modulo the group count when cycling; toggling
-  unrelated layers preserves it.
+  unrelated layers preserves it. The window is arranged as a two-column
+  workspace: a fixed-width (340px) scrollable control column on the left holds
+  the section panels, the fretboard dominates the right column beneath a
+  workspace header (title = active scale/modal scale; context = parent-major
+  root · tuning · frets), and a color legend bar spans the bottom. The
+  triad-quality selector is disabled while the Triads layer is off, matching
+  the Prev/Next voicing controls.
+- `ui.panels` — presentation-only layout panels for the control column.
+  `InstrumentPanel`, `MusicalContextPanel`, `LayerPanel`, and `TriadPanel`
+  each build one section's widgets (selectors, checkboxes, readouts, voicing
+  controls) and expose them as attributes; `LegendWidget` renders the marker
+  color legend from the shared palette; `WorkspaceHeader` is the two-line
+  title/context bar above the fretboard. Panels own no state and wire no
+  signals — `MainWindow` aliases every widget as its own attribute and keeps
+  all state and connections, so tests address `window.tuning_selector` etc.
+  exactly as before.
+- `ui.palette` — the shared Qt color constants used by both the fretboard
+  widget's painting and the legend, so the legend can never drift from the
+  board.
 - `ui.tuning_editor.CustomTuningEditor` — a compact Qt widget for entering a
   custom tuning from its low→high open-string pitches: one row per string
   (conventional number + pitch-class selector + octave selector, never raw
@@ -350,6 +368,8 @@ application is the primary entry point (`guitar-app`).
 | Layer controls         | ui.layer_controls     | nothing (UI model)       |
 | Render annotations     | ui.render_annotations | core.layers, core.fretboard |
 | Rendering geometry     | ui.geometry          | core.fretboard (coords)  |
+| Marker palette         | ui.palette           | nothing (Qt colors)      |
+| Control panels/header  | ui.panels            | ui.palette, ui.tuning_editor |
 | Fretboard widget       | ui                   | core.fretboard, ui.render_annotations |
 | Progression (planned)  | core.progression     | theory, fretboard       |
 | Audio (planned)        | core.audio           | core.theory (for pitch names) |
