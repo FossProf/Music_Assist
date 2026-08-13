@@ -53,6 +53,9 @@ from guitar_app.ui.render_annotations import (
 
 WINDOW_TEST_BOARD = DEFAULT_INSTRUMENT_STATE.fretboard
 
+A_DORIAN_READOUT = "A Dorian · Parent Major: G · Altered from Ionian: b3, b7"
+D_DORIAN_READOUT = "D Dorian · Parent Major: C · Altered from Ionian: b3, b7"
+
 
 def _tuning_index(tuning_id: str) -> int:
     return next(i for i, named in enumerate(available_tunings()) if named.id == tuning_id)
@@ -562,6 +565,32 @@ class TestModeSelector:
         assert window.view_selector.isEnabled() is False
         assert window.scale_selector.currentText() == MINOR_PENTATONIC.name
         assert window.selection_label.text() == "A Minor Pentatonic"
+        assert window.mode_label.text() == ""
+
+    def test_mode_readout_parallel_dorian(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        assert window.mode_label.text() == A_DORIAN_READOUT
+
+    def test_mode_readout_relative_dorian(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.root_selector.setCurrentIndex(0)  # C
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        assert window.mode_label.text() == D_DORIAN_READOUT
+
+    def test_mode_readout_relative_lydian(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.mode_selector.setCurrentIndex(_mode_index("lydian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        assert window.mode_label.text() == "D Lydian · Parent Major: A · Altered from Ionian: #4"
+
+    def test_mode_readout_cleared_when_leaving_modal_context(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        assert window.mode_label.text() != ""
+        window.mode_selector.setCurrentIndex(_mode_index("ionian"))
+        assert window.mode_label.text() == ""
 
     def test_selecting_dorian_mirrors_formula_into_scale_selector(
         self, qapp: QApplication
@@ -711,6 +740,60 @@ class TestModeSelector:
             evaluate_scale(board, PitchClass.A, "dorian")
         )
         assert window.selection_label.text() == "A Dorian"
+
+    def test_relative_dorian_on_standard_tuning(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.root_selector.setCurrentIndex(0)  # C
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        assert window.tuning_selector.currentText() == "Standard"
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(board, PitchClass.D, "dorian")
+        )
+        assert window.selection_label.text() == "D Dorian of C Major"
+        assert window.mode_label.text() == D_DORIAN_READOUT
+
+    def test_relative_dorian_on_drop_d_tuning(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.tuning_selector.setCurrentIndex(_tuning_index("drop_d"))
+        window.root_selector.setCurrentIndex(0)  # C
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(board, PitchClass.D, "dorian")
+        )
+        assert window.selection_label.text() == "D Dorian of C Major"
+        assert window.mode_label.text() == D_DORIAN_READOUT
+
+    def test_relative_dorian_on_dadgad_tuning(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.tuning_selector.setCurrentIndex(_tuning_index("dadgad"))
+        window.root_selector.setCurrentIndex(0)  # C
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(board, PitchClass.D, "dorian")
+        )
+        assert window.selection_label.text() == "D Dorian of C Major"
+        assert window.mode_label.text() == D_DORIAN_READOUT
+
+    def test_relative_dorian_on_custom_tuning(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        window.tuning_editor.apply_button.click()
+        assert window.tuning_selector.currentText() == "Custom"
+        window.root_selector.setCurrentIndex(0)  # C
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(board, PitchClass.D, "dorian")
+        )
+        assert window.selection_label.text() == "D Dorian of C Major"
+        assert window.mode_label.text() == D_DORIAN_READOUT
 
 
 class TestTriadQualitySelector:

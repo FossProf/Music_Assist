@@ -80,9 +80,10 @@ class MainWindow(QMainWindow):
     before. Selecting any other mode activates modal context: the scale
     selector mirrors the mode's formula, and in the Relative view the effective
     root becomes the derived modal root (the input root is treated as the
-    parent-major root). Leaving modal context restores the previously selected
-    scale; changing the scale while a mode is active drops back out of modal
-    context.
+    parent-major root). The compact :attr:`mode_label` readout then shows the
+    modal root, its parent-major root, and the characteristic alterations from
+    Ionian. Leaving modal context restores the previously selected scale;
+    changing the scale while a mode is active drops back out of modal context.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -109,6 +110,7 @@ class MainWindow(QMainWindow):
         self.next_voicing_button = QPushButton("Next")
         self.tuning_label = QLabel()
         self.selection_label = QLabel()
+        self.mode_label = QLabel()
         self.voicing_label = QLabel()
         self.tuning_editor = CustomTuningEditor()
         self.tuning_editor_button = QPushButton("Edit Tuning…")
@@ -171,6 +173,7 @@ class MainWindow(QMainWindow):
             selectors_layout.addWidget(self.layer_checkboxes[control.id])
         selectors_layout.addWidget(self.tuning_label)
         selectors_layout.addWidget(self.selection_label)
+        selectors_layout.addWidget(self.mode_label)
         selectors_layout.addWidget(self.tuning_editor_button)
         selectors_layout.addWidget(self.previous_voicing_button)
         selectors_layout.addWidget(self.next_voicing_button)
@@ -231,6 +234,7 @@ class MainWindow(QMainWindow):
             named = self._scale_formulas[self.scale_selector.currentIndex()]
         effective_root = root
         modal_context: str | None = None
+        selection: ModeSelection | None = None
         if mode is not None:
             view = self.view_selector.currentData() or ModeView.PARALLEL
             selection = evaluate_mode(root, mode, view)
@@ -252,6 +256,7 @@ class MainWindow(QMainWindow):
         self.selection_label.setText(
             self._selection_label(effective_root, named, quality, modal_context)
         )
+        self.mode_label.setText(self._mode_readout(selection) if selection is not None else "")
         # Reset the active voicing only when the underlying triad result changed
         # (root, quality, or fretboard), so toggling layers preserves the user's
         # chosen voicing. While the triad layer is unchecked its result is not
@@ -384,6 +389,20 @@ class MainWindow(QMainWindow):
                 f"{selection.parent_major_root.spelling()} Major"
             )
         return selection.mode.display_name
+
+    def _mode_readout(self, selection: ModeSelection) -> str:
+        """The compact mode-information readout shown in :attr:`mode_label`.
+
+        Surfaces the modal root, the parent-major root, and the
+        characteristic alterations from Ionian, e.g.
+        ``"D Dorian · Parent Major: C · Altered from Ionian: b3, b7"``.
+        """
+        altered = ", ".join(degree.label for degree in selection.altered_degrees_from_ionian)
+        return (
+            f"{selection.modal_root.spelling()} {selection.mode.display_name} · "
+            f"Parent Major: {selection.parent_major_root.spelling()} · "
+            f"Altered from Ionian: {altered}"
+        )
 
     def _on_mode_changed(self, *_args: object) -> None:
         """Enter or leave modal context in response to the Mode selector.
