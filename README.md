@@ -64,8 +64,8 @@ Implemented:
 - Custom tunings: build any tuning from explicit low→high open-string pitches
   (`tuning_from_low_to_high` in `core.instrument`,
   `instrument_from_string_pitches` in `services.instrument_state`), and a
-  compact **Edit Tuning…** editor in the main window that edits the 6th/lowest
-  string, previews edits as a pending custom tuning, and applies it as a new
+  compact **Edit Tuning…** editor in the main window that edits each string's
+  open pitch, previews edits as a pending custom tuning, and applies it as a new
   instrument state with no preset identity (the tuning selector moves to a
   `Custom` item)
 
@@ -174,9 +174,9 @@ See `docs/architecture.md`, `docs/domain-model.md`, and the ADRs in
   (six semitones could be `#4` or `b5`).
 - No capo support yet (planned).
 - The GUI slice ships with built-in tuning presets (Standard through Drop D /
-  open tunings) and a compact custom-tuning editor for the lowest string, but
-  no fret-count control yet; the default window shows a 22-fret Standard
-  board.
+  open tunings) and a compact custom-tuning editor for each string's open
+  pitch, but no fret-count control yet; the default window shows a 22-fret
+  Standard board.
 - Triad voicings are limited to adjacent-string sets within the default fret
   span; voicing filtering/ranking is future work.
 - No extended chords, progressions, or audio yet.
