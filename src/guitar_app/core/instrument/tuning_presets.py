@@ -17,23 +17,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from guitar_app.core.errors import UnknownTuningError
-from guitar_app.core.instrument.guitar_string import GuitarString
-from guitar_app.core.instrument.tuning import STANDARD, Tuning
+from guitar_app.core.instrument.tuning import STANDARD, Tuning, tuning_from_low_to_high
 from guitar_app.core.theory.pitch import Pitch, PitchClass
-
-
-def _low_to_high(*pitches: Pitch) -> tuple[GuitarString, ...]:
-    """Build strings ``N..1`` from low-to-high ``pitches`` (first = lowest)."""
-    count = len(pitches)
-    return tuple(
-        GuitarString(number, pitch)
-        for number, pitch in zip(range(count, 0, -1), pitches, strict=True)
-    )
 
 
 def _six_string(name: str, *pitches: Pitch) -> Tuning:
     """Build a six-string ``Tuning`` from low-to-high open-string pitches."""
-    return Tuning(name, _low_to_high(*pitches))
+    return tuning_from_low_to_high(name, pitches)
 
 
 @dataclass(frozen=True, slots=True)

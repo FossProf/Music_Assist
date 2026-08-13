@@ -26,9 +26,9 @@ triads, scale/triad-to-fretboard mapping, interval-to-fretboard mapping,
 adjacent-string triad voicings with inversions, fretboard layers, and an
 application service layer. A PySide6 desktop window lets you pick a tuning
 preset, a root pitch class, a named scale, and a triad quality, toggle the
-Scale, Intervals, and Triads layers, and see the enabled overlays rendered
-together across the active instrument's fretboard — including cycling through
-detected triad voicings.
+Scale, Intervals, and Triads layers, edit a custom tuning from its string
+pitches, and see the enabled overlays rendered together across the active
+instrument's fretboard — including cycling through detected triad voicings.
 
 Implemented:
 
@@ -61,6 +61,13 @@ Implemented:
   centered, additional ones as secondary badges, active triad voicing as an
   overlay); switching tuning presets re-evaluates every enabled layer against
   the newly derived fretboard while preserving the fret count and selections
+- Custom tunings: build any tuning from explicit low→high open-string pitches
+  (`tuning_from_low_to_high` in `core.instrument`,
+  `instrument_from_string_pitches` in `services.instrument_state`), and a
+  compact **Edit Tuning…** editor in the main window that edits the 6th/lowest
+  string, previews edits as a pending custom tuning, and applies it as a new
+  instrument state with no preset identity (the tuning selector moves to a
+  `Custom` item)
 
 Not yet implemented (see `docs/architecture.md` for the roadmap):
 
@@ -69,7 +76,7 @@ Not yet implemented (see `docs/architecture.md` for the roadmap):
 - Chord and progression analysis
 - Audio capture and pitch detection
 - Circle-of-fifths and other exploratory tools
-- Custom tunings / fret-count controls in the UI
+- Fret-count controls in the UI (custom tunings are supported)
 
 ## Development setup
 
@@ -101,8 +108,11 @@ This opens a window with tuning, root, scale, and triad-quality selectors plus
 Scale/Intervals/Triads layer checkboxes. The default view (Standard tuning, A
 Minor Pentatonic) is shown on the fretboard; changing a selector or toggling a
 layer updates it, and picking a different tuning preset re-evaluates every
-enabled layer against the new tuning. With the Triads layer enabled, the
-Prev/Next buttons step through the detected voicings of the selected triad.
+enabled layer against the new tuning. The **Edit Tuning…** button opens a
+compact custom-tuning editor: change a string's open pitch, preview the result,
+and press **Apply Tuning** to switch the workspace to a `Custom` tuning. With
+the Triads layer enabled, the Prev/Next buttons step through the detected
+voicings of the selected triad.
 
 To inspect the fretboard model from the command line instead:
 
@@ -137,7 +147,7 @@ src/guitar_app/
     services/        # application services orchestrating the core (Qt-free),
                      #   plus InstrumentState (active-instrument config)
     ui/              # PySide6 app: layer controls, render annotations,
-                     #   main window, fretboard widget
+                     #   main window, tuning editor, fretboard widget
     cli.py           # development-only CLI harness
     app.py           # desktop application entry point
 ```
@@ -164,8 +174,9 @@ See `docs/architecture.md`, `docs/domain-model.md`, and the ADRs in
   (six semitones could be `#4` or `b5`).
 - No capo support yet (planned).
 - The GUI slice ships with built-in tuning presets (Standard through Drop D /
-  open tunings) but no custom-tuning or fret-count editor yet; the default
-  window shows a 22-fret Standard board.
+  open tunings) and a compact custom-tuning editor for the lowest string, but
+  no fret-count control yet; the default window shows a 22-fret Standard
+  board.
 - Triad voicings are limited to adjacent-string sets within the default fret
   span; voicing filtering/ranking is future work.
 - No extended chords, progressions, or audio yet.

@@ -9,6 +9,24 @@ from guitar_app.core.instrument.guitar_string import GuitarString
 from guitar_app.core.theory.pitch import Pitch, PitchClass
 
 
+def tuning_from_low_to_high(name: str, pitches: tuple[Pitch, ...]) -> Tuning:
+    """Build a :class:`Tuning` from low-to-high open-string pitches.
+
+    ``pitches`` is ordered low to high: the first entry becomes the conventional
+    lowest string (string ``N`` for an ``N``-string tuning) and the last entry
+    the highest (string 1). String numbers ``N..1`` are assigned from the
+    supplied order, matching the conventional guitar numbering (string 1 is the
+    highest/thinnest). Validation (string numbers exactly ``1..N``, at least one
+    string) is enforced by :class:`Tuning`.
+    """
+    count = len(pitches)
+    strings = tuple(
+        GuitarString(number, pitch)
+        for number, pitch in zip(range(count, 0, -1), pitches, strict=True)
+    )
+    return Tuning(name, strings)
+
+
 def _standard_strings() -> tuple[GuitarString, ...]:
     """The six strings of standard EADGBE tuning, ordered low to high."""
     return (

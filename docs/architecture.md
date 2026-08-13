@@ -63,6 +63,10 @@ note-spelling engine is future work.
   stable snake_case IDs. `NamedTuning.name` is the user-facing preset label;
   `Tuning.name` is the intrinsic/domain/debug label. Preset IDs are intended to
   become stable persistence/API identifiers.
+- `tuning_from_low_to_high(name, pitches)` — builds a `Tuning` from explicit
+  low→high open-string pitches; string numbers `N..1` are derived from the
+  supplied order (matching conventional guitar numbering, string 1 highest)
+  and validated by `Tuning`.
 
 The model deliberately supports arbitrary tunings, string counts, and (later)
 capo offsets. No fretboard geometry lives here.
@@ -157,6 +161,12 @@ tuning preset catalog -> InstrumentState -> Fretboard -> services/layers
 - `instrument_from_tuning_id(tuning_id, *, fret_count=22)` — resolves the ID via
   `tuning_by_id` and preserves the preset ID and display name. Unknown IDs
   propagate `UnknownTuningError`.
+- `instrument_from_string_pitches(pitches, *, fret_count=22, display_name="Custom")` —
+  builds a custom `InstrumentState` from explicit low→high open-string pitches
+  via `tuning_from_low_to_high`. The result carries no preset identity
+  (`tuning_id=None`) and the caller-supplied display name (default `"Custom"`).
+  Preset identity describes origin/selection, never inferred pitch equality, so
+  a custom state is never silently identified as a built-in preset.
 - `DEFAULT_INSTRUMENT_STATE` — the canonical application default: Standard
   tuning, 22 frets.
 - Custom tunings are first-class: `InstrumentState(tuning=some_custom_tuning,
@@ -198,11 +208,16 @@ data and service results, and performs no theory calculations.
 - `ui.main_window.MainWindow` — the main window: tuning, root, scale, and
   triad-quality selectors, one checkbox per `LAYER_CONTROLS` entry,
   Previous/Next voicing controls, a live tuning label (using the preset's
-  display name) plus a current-selection label and a voicing label, and the
+  display name) plus a current-selection label and a voicing label, an
+  **Edit Tuning…** toggle for the compact custom-tuning editor, and the
   fretboard widget. It owns the active `services.instrument_state`
   `InstrumentState`; changing the tuning selector rebuilds it via
   `instrument_from_tuning_id` while preserving the fret count and all other
-  selections. On any selection/toggle change it derives the active fretboard
+  selections. The tuning selector lists the built-in presets plus a
+  non-catalog `Custom` item (selecting it without an applied custom tuning
+  snaps back to the active preset); applying the string editor builds a custom
+  state via `instrument_from_string_pitches` and moves the selector to
+  `Custom`. On any selection/toggle change it derives the active fretboard
   from that state, evaluates **only the enabled** layers (an explicit branch
   per known UI layer — no generic dispatcher), projects each result into
   render annotations, combines them in control order, and hands the immutable
@@ -212,6 +227,15 @@ data and service results, and performs no theory calculations.
   first voicing only when the triad result changes (root, quality, or
   fretboard/tuning), and wraps modulo the group count when cycling; toggling
   unrelated layers preserves it.
+- `ui.tuning_editor.CustomTuningEditor` — a compact Qt widget for entering a
+  custom tuning from its low→high open-string pitches: one row per string
+  (conventional number + pitch-class selector + octave selector, never raw
+  MIDI numbers), a live preview, and an Apply button. Editing is pending by
+  design: the editor emits `edited` (surfaced as a status-bar message) and
+  `apply_requested`, but performs no theory and never builds an
+  `InstrumentState` — the owning window reads `read_pitches()` and applies the
+  result. `set_pitches` re-syncs rows without emitting `edited`, so programmatic
+  syncing never marks a pending change.
 - `ui.render_annotations` — the UI projection boundary.
   `FretboardRenderAnnotation` (`position`, `label`, `role`) plus
   `render_scale_result`, `render_interval_result`, and `render_triad_result`
@@ -261,15 +285,17 @@ application is the primary entry point (`guitar-app`).
   Must remain independent of the theory engine and the UI; DSP code may use
   NumPy or native libraries only once profiling justifies it.
 - **ui** — the PySide6 desktop application. The main window, tuning/root/scale
-  selectors, layer checkboxes derived from `ui.layer_controls`, the UI
-  render-annotation projection, and the fretboard widget are implemented;
+  selectors, layer checkboxes derived from `ui.layer_controls`, the compact
+  custom-tuning editor (`ui.tuning_editor`), the UI render-annotation
+  projection, and the fretboard widget are implemented;
   triad voicings are rendered as an active-shape overlay and audio
   visualization will be added incrementally.
 - **services** — application-level services that orchestrate the core engines
   on behalf of the UI. `evaluate_scale`, `available_scale_formulas`,
   `evaluate_intervals`, `evaluate_triad`, `available_triad_qualities`,
-  `instrument_from_tuning_id`, and `InstrumentState` are implemented; more
-  operations (progressions) will be added.
+  `instrument_from_tuning_id`, `instrument_from_string_pitches`, and
+  `InstrumentState` are implemented; more operations (progressions) will be
+  added.
 
 ## Domain boundaries
 

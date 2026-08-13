@@ -4,7 +4,7 @@ import pytest
 
 from guitar_app.core.errors import InvalidTuningError
 from guitar_app.core.instrument.guitar_string import GuitarString
-from guitar_app.core.instrument.tuning import STANDARD, Tuning
+from guitar_app.core.instrument.tuning import STANDARD, Tuning, tuning_from_low_to_high
 from guitar_app.core.theory.pitch import Pitch, PitchClass
 
 
@@ -56,6 +56,45 @@ class TestTuningValidation:
         assert tuning.string_count == 3
         assert tuning.string(3).open_pitch == Pitch(PitchClass.D, 2)
         assert tuning.string(1).open_pitch == Pitch(PitchClass.E, 4)
+
+
+class TestTuningFromLowToHigh:
+    def test_numbers_strings_n_down_to_one(self) -> None:
+        tuning = tuning_from_low_to_high(
+            "custom",
+            (
+                Pitch(PitchClass.E, 2),
+                Pitch(PitchClass.A, 2),
+                Pitch(PitchClass.D, 3),
+                Pitch(PitchClass.G, 3),
+                Pitch(PitchClass.B, 3),
+                Pitch(PitchClass.E, 4),
+            ),
+        )
+        assert tuning.name == "custom"
+        assert [string.number for string in tuning.strings] == [6, 5, 4, 3, 2, 1]
+        assert tuning.string(6).open_pitch == Pitch(PitchClass.E, 2)
+        assert tuning.string(1).open_pitch == Pitch(PitchClass.E, 4)
+
+    def test_first_entry_is_lowest_string(self) -> None:
+        tuning = tuning_from_low_to_high(
+            "custom",
+            (
+                Pitch(PitchClass.C, 2),
+                Pitch(PitchClass.G, 3),
+            ),
+        )
+        assert tuning.string(2).open_pitch == Pitch(PitchClass.C, 2)
+        assert tuning.string(1).open_pitch == Pitch(PitchClass.G, 3)
+
+    def test_single_pitch_numbers_string_one(self) -> None:
+        tuning = tuning_from_low_to_high("single", (Pitch(PitchClass.E, 4),))
+        assert tuning.string_count == 1
+        assert tuning.string(1).open_pitch == Pitch(PitchClass.E, 4)
+
+    def test_empty_pitches_rejected(self) -> None:
+        with pytest.raises(InvalidTuningError):
+            tuning_from_low_to_high("empty", ())
 
 
 class TestStringNumbering:

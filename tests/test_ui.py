@@ -11,9 +11,13 @@ from PySide6.QtWidgets import QApplication
 
 from guitar_app.core.fretboard.fretboard import Fretboard, FretPosition
 from guitar_app.core.instrument.tuning import STANDARD
-from guitar_app.core.instrument.tuning_presets import DROP_D_TUNING, available_tunings
+from guitar_app.core.instrument.tuning_presets import (
+    DADGAD_TUNING,
+    DROP_D_TUNING,
+    available_tunings,
+)
 from guitar_app.core.layers.triad_layer import TriadLayerResult
-from guitar_app.core.theory.pitch import PitchClass
+from guitar_app.core.theory.pitch import Pitch, PitchClass
 from guitar_app.core.theory.scale_formulas import MINOR_PENTATONIC, SCALE_FORMULAS
 from guitar_app.core.theory.triad import TriadQuality
 from guitar_app.services.instrument_state import DEFAULT_INSTRUMENT_STATE
@@ -870,10 +874,11 @@ class TestVoicingGroupWidget:
 class TestTuningSelector:
     def test_tuning_selector_populated_from_catalog(self, qapp: QApplication) -> None:
         window = MainWindow()
-        assert window.tuning_selector.count() == len(available_tunings())
+        assert window.tuning_selector.count() == len(available_tunings()) + 1
         assert [
             window.tuning_selector.itemText(i) for i in range(window.tuning_selector.count())
-        ] == [named.name for named in available_tunings()]
+        ] == [named.name for named in available_tunings()] + ["Custom"]
+        assert window.tuning_selector.itemData(window.tuning_selector.count() - 1) is None
 
     def test_default_tuning_is_standard(self, qapp: QApplication) -> None:
         window = MainWindow()
@@ -1007,3 +1012,194 @@ class TestTuningSelector:
         assert module is not None and module.__file__ is not None
         source = Path(module.__file__).read_text(encoding="utf-8")
         assert "STANDARD_BOARD" not in source
+
+
+class TestCustomTuningEditor:
+    STANDARD_PITCHES = (
+        Pitch(PitchClass.E, 2),
+        Pitch(PitchClass.A, 2),
+        Pitch(PitchClass.D, 3),
+        Pitch(PitchClass.G, 3),
+        Pitch(PitchClass.B, 3),
+        Pitch(PitchClass.E, 4),
+    )
+
+    def test_editor_initially_reflects_standard(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window.tuning_editor.read_pitches() == self.STANDARD_PITCHES
+
+    def test_editor_is_hidden_by_default_and_toggleable(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window._tuning_editor_open is False
+        assert window.tuning_editor_button.text() == "Edit Tuning…"
+        window.tuning_editor_button.click()
+        assert window._tuning_editor_open is True
+        assert window.tuning_editor.isHidden() is False
+        assert window.tuning_editor_button.text() == "Hide Tuning Editor"
+        window.tuning_editor_button.click()
+        assert window._tuning_editor_open is False
+        assert window.tuning_editor_button.text() == "Edit Tuning…"
+
+    def test_selecting_drop_d_repopulates_editor(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.tuning_selector.setCurrentIndex(_tuning_index("drop_d"))
+        assert window.tuning_editor.read_pitches() == tuple(
+            string.open_pitch for string in DROP_D_TUNING.tuning.strings
+        )
+
+    def test_selecting_dadgad_repopulates_editor(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.tuning_selector.setCurrentIndex(_tuning_index("dadgad"))
+        assert window.tuning_editor.read_pitches() == tuple(
+            string.open_pitch for string in DADGAD_TUNING.tuning.strings
+        )
+
+    def test_editing_one_string_does_not_affect_active_state_until_apply(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        state_before = window._instrument_state
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        assert window._instrument_state is state_before
+        assert window._instrument_state.tuning_id == "standard"
+        assert window.fretboard_widget.fretboard is not None
+        assert window.fretboard_widget.fretboard.tuning is state_before.tuning
+        assert window.tuning_selector.currentText() == "Standard"
+
+    def test_editing_string_shows_pending_status_message(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        assert "Apply Tuning" in window.statusBar().currentMessage()
+
+    def test_apply_standard_edit_makes_drop_d_equivalent_custom(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        window.tuning_editor.apply_button.click()
+        state = window._instrument_state
+        assert state.tuning_id is None
+        assert state.display_name == "Custom"
+        assert window.tuning_selector.currentText() == "Custom"
+        assert window.tuning_label.text() == "Tuning: Custom"
+        assert tuple(string.open_pitch for string in state.tuning.strings) == tuple(
+            string.open_pitch for string in DROP_D_TUNING.tuning.strings
+        )
+        assert state.fret_count == DEFAULT_INSTRUMENT_STATE.fret_count
+        assert state.fretboard.pitch_at(6, 0) == Pitch(PitchClass.D, 2)
+
+    def test_custom_state_is_not_identified_as_preset_drop_d(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        window.tuning_editor.apply_button.click()
+        assert window._instrument_state.tuning_id is None
+        assert window._instrument_state.display_name == "Custom"
+        assert window._instrument_state.tuning is not DROP_D_TUNING.tuning
+        assert window.tuning_selector.currentText() == "Custom"
+
+    def test_scale_recomputes_from_custom_tuning(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        window.tuning_editor.apply_button.click()
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.fretboard == board
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(board, PitchClass.A, "minor_pentatonic")
+        )
+        by_fret = {
+            annotation.position: annotation for annotation in window.fretboard_widget.annotations
+        }
+        assert by_fret[FretPosition(6, 0)].label == "4"
+
+    def test_intervals_recompute_from_custom_tuning(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        window.tuning_editor.apply_button.click()
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_interval_result(
+            evaluate_intervals(board, PitchClass.A)
+        )
+        by_fret = {
+            annotation.position: annotation for annotation in window.fretboard_widget.annotations
+        }
+        assert by_fret[FretPosition(6, 0)].label == "4"
+
+    def test_triads_recompute_from_custom_tuning(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        window.tuning_editor.apply_button.click()
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_triad_result(
+            evaluate_triad(board, PitchClass.A, TriadQuality.MAJOR)
+        )
+        by_fret = {
+            annotation.position: annotation for annotation in window.fretboard_widget.annotations
+        }
+        assert by_fret[FretPosition(6, 2)].label == "5"
+
+    def test_voicings_reset_to_first_on_apply(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.next_voicing_button.click()
+        assert window.voicing_label.text().startswith("Voicing 2 /")
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        window.tuning_editor.apply_button.click()
+        assert window.voicing_label.text().startswith("Voicing 1 /")
+        assert window._active_voicing_index == 0
+
+    def test_apply_preserves_selections_and_layer_toggles(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.root_selector.setCurrentIndex(0)  # C
+        window.triad_quality_selector.setCurrentIndex(1)  # Minor
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        window.tuning_editor.apply_button.click()
+        assert window.root_selector.currentText() == "C"
+        assert window.scale_selector.currentText() == MINOR_PENTATONIC.name
+        assert window.triad_quality_selector.currentText() == "Minor"
+        assert window.layer_checkboxes["scale"].isChecked() is True
+        assert window.layer_checkboxes["interval"].isChecked() is True
+        assert window.layer_checkboxes["triad"].isChecked() is True
+        board = window._instrument_state.fretboard
+        expected = render_scale_result(evaluate_scale(board, PitchClass.C, "minor_pentatonic"))
+        expected += render_interval_result(evaluate_intervals(board, PitchClass.C))
+        expected += render_triad_result(evaluate_triad(board, PitchClass.C, TriadQuality.MINOR))
+        assert window.fretboard_widget.annotations == expected
+        assert window.selection_label.text() == ("C Minor Pentatonic · Intervals · Minor Triads")
+
+    def test_returning_to_preset_restores_identity_and_display_name(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        window.tuning_editor.apply_button.click()
+        assert window._instrument_state.tuning_id is None
+        window.tuning_selector.setCurrentIndex(_tuning_index("drop_d"))
+        assert window._instrument_state.tuning_id == "drop_d"
+        assert window._instrument_state.display_name == "Drop D"
+        assert window.tuning_label.text() == "Tuning: Drop D"
+        assert window.tuning_selector.currentText() == "Drop D"
+        assert window.tuning_editor.read_pitches() == tuple(
+            string.open_pitch for string in DROP_D_TUNING.tuning.strings
+        )
+
+    def test_selecting_custom_item_without_custom_tuning_snaps_back(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        window.tuning_selector.setCurrentIndex(window._custom_tuning_index)
+        assert window.tuning_selector.currentText() == "Standard"
+        assert window._instrument_state.tuning_id == "standard"
+
+    def test_headless_rendering_after_custom_apply(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.tuning_editor.set_string_pitch(6, Pitch(PitchClass.D, 2))
+        window.tuning_editor.apply_button.click()
+        assert not window.fretboard_widget.grab().isNull()
+        window.tuning_selector.setCurrentIndex(_tuning_index("dadgad"))
+        assert not window.fretboard_widget.grab().isNull()

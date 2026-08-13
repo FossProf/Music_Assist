@@ -18,8 +18,9 @@ from dataclasses import dataclass
 
 from guitar_app.core.errors import InvalidPositionError
 from guitar_app.core.fretboard.fretboard import Fretboard
-from guitar_app.core.instrument.tuning import Tuning
+from guitar_app.core.instrument.tuning import Tuning, tuning_from_low_to_high
 from guitar_app.core.instrument.tuning_presets import tuning_by_id
+from guitar_app.core.theory.pitch import Pitch
 
 #: Default fret count for a normal guitar workspace (frets 0..22).
 DEFAULT_FRET_COUNT = 22
@@ -73,6 +74,34 @@ def instrument_from_tuning_id(
         fret_count=fret_count,
         tuning_id=named.id,
         display_name=named.name,
+    )
+
+
+def instrument_from_string_pitches(
+    pitches: tuple[Pitch, ...],
+    *,
+    fret_count: int = DEFAULT_FRET_COUNT,
+    display_name: str = "Custom",
+) -> InstrumentState:
+    """Build a custom instrument state from explicit low-to-high pitches.
+
+    ``pitches`` is ordered **low → high**: the first entry is the conventional
+    lowest string (string ``N`` for an ``N``-string tuning) and the last entry
+    is the highest (string 1). String numbers ``N..1`` are derived from that
+    order via :func:`tuning_from_low_to_high`, reusing the existing
+    :class:`GuitarString` and :class:`Tuning` construction and validation.
+
+    The resulting state carries no preset identity (``tuning_id`` is ``None``)
+    and preserves ``display_name`` (default ``"Custom"``). Preset identity
+    describes origin/selection, never inferred pitch equality, so a custom
+    state is never silently identified as a built-in preset.
+    """
+    tuning = tuning_from_low_to_high(display_name, pitches)
+    return InstrumentState(
+        tuning=tuning,
+        fret_count=fret_count,
+        tuning_id=None,
+        display_name=display_name,
     )
 
 

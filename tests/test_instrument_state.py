@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from guitar_app.core.errors import InvalidPositionError, UnknownTuningError
+from guitar_app.core.errors import InvalidPositionError, InvalidTuningError, UnknownTuningError
 from guitar_app.core.fretboard.fretboard import Fretboard
 from guitar_app.core.instrument.guitar_string import GuitarString
 from guitar_app.core.instrument.tuning import Tuning
@@ -20,6 +20,7 @@ from guitar_app.services.instrument_state import (
     DEFAULT_FRET_COUNT,
     DEFAULT_INSTRUMENT_STATE,
     InstrumentState,
+    instrument_from_string_pitches,
     instrument_from_tuning_id,
 )
 
@@ -129,6 +130,93 @@ class TestCustomConstruction:
         state = InstrumentState(tuning=tuning, fret_count=24, display_name="My Tuning")
         assert state.display_name == "My Tuning"
         assert state.tuning_id is None
+
+
+class TestStringPitchConstruction:
+    STANDARD_PITCHES = (
+        Pitch(PitchClass.E, 2),
+        Pitch(PitchClass.A, 2),
+        Pitch(PitchClass.D, 3),
+        Pitch(PitchClass.G, 3),
+        Pitch(PitchClass.B, 3),
+        Pitch(PitchClass.E, 4),
+    )
+
+    def test_from_standard_pitches(self) -> None:
+        state = instrument_from_string_pitches(self.STANDARD_PITCHES)
+        assert tuple(string.open_pitch for string in state.tuning.strings) == (
+            self.STANDARD_PITCHES
+        )
+        assert state.fretboard == Fretboard(state.tuning, DEFAULT_FRET_COUNT)
+
+    def test_arbitrary_valid_pitches(self) -> None:
+        pitches = (
+            Pitch(PitchClass.C, 2),
+            Pitch(PitchClass.F, 3),
+            Pitch(PitchClass.GSHARP, 4),
+        )
+        state = instrument_from_string_pitches(pitches)
+        assert state.tuning.string_count == 3
+        assert tuple(string.open_pitch for string in state.tuning.strings) == pitches
+        assert state.fretboard.pitch_at(3, 0) == Pitch(PitchClass.C, 2)
+
+    def test_tuning_id_is_none(self) -> None:
+        state = instrument_from_string_pitches(self.STANDARD_PITCHES)
+        assert state.tuning_id is None
+
+    def test_custom_display_name_preserved(self) -> None:
+        state = instrument_from_string_pitches(self.STANDARD_PITCHES, display_name="My Tuning")
+        assert state.display_name == "My Tuning"
+
+    def test_default_display_name_is_custom(self) -> None:
+        state = instrument_from_string_pitches(self.STANDARD_PITCHES)
+        assert state.display_name == "Custom"
+
+    def test_exact_string_numbering(self) -> None:
+        state = instrument_from_string_pitches(self.STANDARD_PITCHES)
+        assert {string.number for string in state.tuning.strings} == set(range(1, 7))
+        assert state.tuning.string(6).open_pitch == Pitch(PitchClass.E, 2)
+        assert state.tuning.string(1).open_pitch == Pitch(PitchClass.E, 4)
+
+    def test_low_to_high_input_ordering(self) -> None:
+        state = instrument_from_string_pitches(
+            (
+                Pitch(PitchClass.D, 2),
+                Pitch(PitchClass.A, 2),
+                Pitch(PitchClass.D, 3),
+                Pitch(PitchClass.G, 3),
+                Pitch(PitchClass.B, 3),
+                Pitch(PitchClass.E, 4),
+            )
+        )
+        assert state.tuning.string(6).open_pitch == Pitch(PitchClass.D, 2)
+        assert state.tuning.string(1).open_pitch == Pitch(PitchClass.E, 4)
+
+    def test_fret_count_preserved(self) -> None:
+        state = instrument_from_string_pitches(self.STANDARD_PITCHES, fret_count=24)
+        assert state.fret_count == 24
+        assert state.fretboard == Fretboard(state.tuning, 24)
+
+    def test_constructed_tuning_is_immutable(self) -> None:
+        state = instrument_from_string_pitches(self.STANDARD_PITCHES)
+        with pytest.raises(FrozenInstanceError):
+            state.tuning.strings = ()  # type: ignore[misc]
+
+    def test_empty_pitches_rejected(self) -> None:
+        with pytest.raises(InvalidTuningError):
+            instrument_from_string_pitches(())
+
+    def test_negative_fret_count_rejected(self) -> None:
+        with pytest.raises(InvalidPositionError):
+            instrument_from_string_pitches(self.STANDARD_PITCHES, fret_count=-1)
+
+    def test_drop_d_equivalent_is_not_the_drop_d_preset(self) -> None:
+        drop_d_pitches = tuple(string.open_pitch for string in DROP_D_TUNING.tuning.strings)
+        state = instrument_from_string_pitches(drop_d_pitches)
+        assert state.tuning_id is None
+        assert state.display_name == "Custom"
+        assert state.tuning is not DROP_D_TUNING.tuning
+        assert tuple(string.open_pitch for string in state.tuning.strings) == drop_d_pitches
 
 
 class TestValidation:

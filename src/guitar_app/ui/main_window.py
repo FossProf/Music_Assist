@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import QSignalBlocker
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -13,7 +14,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from guitar_app.core.errors import InvalidScaleDegreeError, UnknownScaleFormulaError
+from guitar_app.core.errors import (
+    InvalidPositionError,
+    InvalidScaleDegreeError,
+    InvalidTuningError,
+    UnknownScaleFormulaError,
+)
 from guitar_app.core.fretboard.fretboard import Fretboard
 from guitar_app.core.instrument.tuning_presets import (
     STANDARD_TUNING,
@@ -26,6 +32,7 @@ from guitar_app.core.theory.triad import TriadQuality
 from guitar_app.services.instrument_state import (
     DEFAULT_INSTRUMENT_STATE,
     InstrumentState,
+    instrument_from_string_pitches,
     instrument_from_tuning_id,
 )
 from guitar_app.services.interval_service import evaluate_intervals
@@ -41,6 +48,7 @@ from guitar_app.ui.render_annotations import (
     render_triad_result,
     render_triad_voicings,
 )
+from guitar_app.ui.tuning_editor import CustomTuningEditor
 
 
 class MainWindow(QMainWindow):
@@ -48,12 +56,16 @@ class MainWindow(QMainWindow):
 
     Owns the active :class:`InstrumentState`, the tuning/root/scale/quality
     selectors, a checkbox per layer-control definition, Previous/Next voicing
-    cycling, and the fretboard widget. On any selection or toggle change it
-    re-derives the active fretboard from the instrument state, evaluates only
-    the enabled layers through their services, projects the results into render
-    annotations in control order, and hands the combined immutable collection
-    (plus the currently active voicing group) to the widget; it never constructs
-    scale formulas or performs triad calculations itself.
+    cycling, a compact custom-tuning editor, and the fretboard widget. The
+    tuning selector lists the built-in presets plus a non-catalog ``Custom``
+    item; applying the string editor builds a custom :class:`InstrumentState`
+    (``tuning_id=None``, ``display_name="Custom"``) and switches the selector
+    to ``Custom``. On any selection or toggle change it re-derives the active
+    fretboard from the instrument state, evaluates only the enabled layers
+    through their services, projects the results into render annotations in
+    control order, and hands the combined immutable collection (plus the
+    currently active voicing group) to the widget; it never constructs scale
+    formulas or performs triad calculations itself.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -77,10 +89,14 @@ class MainWindow(QMainWindow):
         self.tuning_label = QLabel()
         self.selection_label = QLabel()
         self.voicing_label = QLabel()
+        self.tuning_editor = CustomTuningEditor()
+        self.tuning_editor_button = QPushButton("Edit Tuning…")
         self.fretboard_widget = FretboardWidget()
 
         self._triad_groups: tuple[TriadVoicingRenderGroup, ...] = ()
         self._active_voicing_index = 0
+        self._editor_synced_index = -1
+        self._tuning_editor_open = False
 
         self._build_selectors()
         self._build_layout()
@@ -89,7 +105,9 @@ class MainWindow(QMainWindow):
 
     def _build_selectors(self) -> None:
         for tuning in self._tunings:
-            self.tuning_selector.addItem(tuning.name)
+            self.tuning_selector.addItem(tuning.name, tuning.id)
+        self.tuning_selector.addItem("Custom", None)
+        self._custom_tuning_index = self.tuning_selector.count() - 1
         for pitch_class in self._pitch_classes:
             self.root_selector.addItem(pitch_class.spelling())
         for named in self._scale_formulas:
@@ -120,6 +138,7 @@ class MainWindow(QMainWindow):
             selectors_layout.addWidget(self.layer_checkboxes[control.id])
         selectors_layout.addWidget(self.tuning_label)
         selectors_layout.addWidget(self.selection_label)
+        selectors_layout.addWidget(self.tuning_editor_button)
         selectors_layout.addWidget(self.previous_voicing_button)
         selectors_layout.addWidget(self.next_voicing_button)
         selectors_layout.addWidget(self.voicing_label)
@@ -130,8 +149,10 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(selectors)
+        layout.addWidget(self.tuning_editor)
         layout.addWidget(self.fretboard_widget, 1)
         self.setCentralWidget(central)
+        self.tuning_editor.setVisible(False)
         self.resize(900, 420)
 
     def _connect_selectors(self) -> None:
@@ -141,6 +162,9 @@ class MainWindow(QMainWindow):
         self.triad_quality_selector.currentIndexChanged.connect(self._update_fretboard)
         for control in LAYER_CONTROLS:
             self.layer_checkboxes[control.id].toggled.connect(self._update_fretboard)
+        self.tuning_editor_button.clicked.connect(self._toggle_tuning_editor)
+        self.tuning_editor.edited.connect(self._on_tuning_edited)
+        self.tuning_editor.apply_requested.connect(self._apply_custom_tuning)
         self.previous_voicing_button.clicked.connect(self._previous_voicing)
         self.next_voicing_button.clicked.connect(self._next_voicing)
 
@@ -148,12 +172,16 @@ class MainWindow(QMainWindow):
         """Re-evaluate the enabled layers for the current selection and redraw."""
         if self.root_selector.currentIndex() < 0 or self.scale_selector.currentIndex() < 0:
             return
-        selected_tuning = self._tunings[self.tuning_selector.currentIndex()]
-        if selected_tuning.id != self._instrument_state.tuning_id:
+        selected_id = self.tuning_selector.currentData()
+        if selected_id is None and self._instrument_state.tuning_id is not None:
+            self._snap_tuning_selector_to_preset()
+            return
+        if selected_id is not None and selected_id != self._instrument_state.tuning_id:
             self._instrument_state = instrument_from_tuning_id(
-                selected_tuning.id,
+                selected_id,
                 fret_count=self._instrument_state.fret_count,
             )
+        self._sync_tuning_editor()
         fretboard = self._instrument_state.fretboard
         named = self._scale_formulas[self.scale_selector.currentIndex()]
         root = self._pitch_classes[self.root_selector.currentIndex()]
@@ -180,6 +208,77 @@ class MainWindow(QMainWindow):
             self._active_voicing_index = 0
         self._apply_active_voicing()
         self.fretboard_widget.set_annotations(fretboard, annotations)
+
+    def _toggle_tuning_editor(self) -> None:
+        """Show or hide the compact custom-tuning editor."""
+        self._tuning_editor_open = not self._tuning_editor_open
+        self.tuning_editor.setVisible(self._tuning_editor_open)
+        self.tuning_editor_button.setText(
+            "Hide Tuning Editor" if self._tuning_editor_open else "Edit Tuning…"
+        )
+
+    def _snap_tuning_selector_to_preset(self) -> None:
+        """Revert the selector to the active preset when Custom was picked idly.
+
+        The ``Custom`` item only represents an applied custom tuning; selecting
+        it without one would show a misleading selector state, so the selector
+        snaps back to the active built-in preset.
+        """
+        assert self._instrument_state.tuning_id is not None
+        preset_index = next(
+            i
+            for i, named in enumerate(self._tunings)
+            if named.id == self._instrument_state.tuning_id
+        )
+        with QSignalBlocker(self.tuning_selector):
+            self.tuning_selector.setCurrentIndex(preset_index)
+
+    def _sync_tuning_editor(self) -> None:
+        """Repopulate the editor when the tuning selector's item changes.
+
+        Syncing is keyed to the selector item, so unrelated re-evaluations
+        (root, scale, quality, layer toggles) never clobber in-progress edits.
+        The ``Custom`` item leaves the editor untouched: it already reflects the
+        active custom tuning.
+        """
+        index = self.tuning_selector.currentIndex()
+        if index == self._editor_synced_index:
+            return
+        self._editor_synced_index = index
+        if index == self._custom_tuning_index:
+            return
+        self._populate_string_editor()
+
+    def _populate_string_editor(self) -> None:
+        """Fill the editor from the active instrument's open-string pitches."""
+        strings = sorted(self._instrument_state.tuning.strings, key=lambda string: -string.number)
+        self.tuning_editor.set_pitches(tuple(string.open_pitch for string in strings))
+
+    def _on_tuning_edited(self) -> None:
+        """Report that the editor now holds a pending custom tuning."""
+        self.statusBar().showMessage("Custom tuning edited — press Apply Tuning to use it")
+
+    def _apply_custom_tuning(self) -> None:
+        """Build a custom instrument state from the editor and activate it.
+
+        On success the active state is replaced (``tuning_id=None``,
+        ``display_name="Custom"``) while the fret count and every other
+        selection are preserved, and the selector moves to the ``Custom`` item.
+        The previous valid state stays active on any construction error.
+        """
+        try:
+            state = instrument_from_string_pitches(
+                self.tuning_editor.read_pitches(),
+                fret_count=self._instrument_state.fret_count,
+            )
+        except (InvalidTuningError, InvalidPositionError) as exc:
+            self.statusBar().showMessage(f"Could not apply tuning: {exc}")
+            return
+        self._instrument_state = state
+        if self.tuning_selector.currentIndex() != self._custom_tuning_index:
+            self.tuning_selector.setCurrentIndex(self._custom_tuning_index)
+        else:
+            self._update_fretboard()
 
     def _selection_label(
         self, root: PitchClass, named: NamedScaleFormula, quality: TriadQuality
