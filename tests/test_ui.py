@@ -17,11 +17,17 @@ from guitar_app.core.instrument.tuning_presets import (
     available_tunings,
 )
 from guitar_app.core.layers.triad_layer import TriadLayerResult
+from guitar_app.core.theory.mode import Mode
 from guitar_app.core.theory.pitch import Pitch, PitchClass
 from guitar_app.core.theory.scale_formulas import MINOR_PENTATONIC, SCALE_FORMULAS
 from guitar_app.core.theory.triad import TriadQuality
 from guitar_app.services.instrument_state import DEFAULT_INSTRUMENT_STATE
 from guitar_app.services.interval_service import evaluate_intervals
+from guitar_app.services.mode_service import (
+    ModeView,
+    available_mode_views,
+    available_modes,
+)
 from guitar_app.services.scale_service import available_scale_formulas, evaluate_scale
 from guitar_app.services.triad_service import (
     available_triad_qualities,
@@ -50,6 +56,14 @@ WINDOW_TEST_BOARD = DEFAULT_INSTRUMENT_STATE.fretboard
 
 def _tuning_index(tuning_id: str) -> int:
     return next(i for i, named in enumerate(available_tunings()) if named.id == tuning_id)
+
+
+def _mode_index(mode_id: str) -> int:
+    return next(i for i, mode in enumerate(available_modes()) if mode.id == mode_id)
+
+
+def _view_index(view: ModeView) -> int:
+    return next(i for i, candidate in enumerate(available_mode_views()) if candidate is view)
 
 
 class TestFretboardGeometry:
@@ -537,6 +551,166 @@ class TestSelectionLabel:
         )
         window.scale_selector.setCurrentIndex(dorian_index)
         assert window.selection_label.text() == "A Intervals"
+
+
+class TestModeSelector:
+    def test_defaults_to_identity_ionian_parallel(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        assert window.mode_selector.currentData() is Mode.IONIAN
+        assert window.mode_selector.currentText() == "Ionian"
+        assert window.view_selector.currentData() is ModeView.PARALLEL
+        assert window.view_selector.isEnabled() is False
+        assert window.scale_selector.currentText() == MINOR_PENTATONIC.name
+        assert window.selection_label.text() == "A Minor Pentatonic"
+
+    def test_selecting_dorian_mirrors_formula_into_scale_selector(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        assert window.view_selector.isEnabled() is True
+        assert window.scale_selector.currentText() == "Dorian"
+        assert window.selection_label.text() == "A Dorian"
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(board, PitchClass.A, "dorian")
+        )
+
+    def test_parallel_view_keeps_input_root(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.root_selector.setCurrentIndex(0)  # C
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.PARALLEL))
+        assert window.selection_label.text() == "C Dorian"
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(board, PitchClass.C, "dorian")
+        )
+
+    def test_relative_dorian_uses_derived_modal_root(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.root_selector.setCurrentIndex(0)  # C
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        assert window.selection_label.text() == "D Dorian of C Major"
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(board, PitchClass.D, "dorian")
+        )
+
+    def test_relative_lydian_from_a_is_d_lydian(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.mode_selector.setCurrentIndex(_mode_index("lydian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        assert window.selection_label.text() == "D Lydian of A Major"
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(board, PitchClass.D, "lydian")
+        )
+
+    def test_relative_aeolian_maps_to_relative_minor(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.root_selector.setCurrentIndex(0)  # C
+        window.mode_selector.setCurrentIndex(_mode_index("aeolian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        assert window.selection_label.text() == "A Aeolian of C Major"
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(board, PitchClass.A, "aeolian")
+        )
+
+    def test_returning_to_ionian_restores_prior_scale(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        assert window.scale_selector.currentText() == "Dorian"
+        window.mode_selector.setCurrentIndex(_mode_index("ionian"))
+        assert window.scale_selector.currentText() == MINOR_PENTATONIC.name
+        assert window.view_selector.currentData() is ModeView.PARALLEL
+        assert window.view_selector.isEnabled() is False
+        assert window.selection_label.text() == "A Minor Pentatonic"
+
+    def test_changing_scale_while_mode_active_leaves_modal_context(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow()
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        mixolydian_index = next(
+            i for i, named in enumerate(available_scale_formulas()) if named.id == "mixolydian"
+        )
+        window.scale_selector.setCurrentIndex(mixolydian_index)
+        assert window.mode_selector.currentData() is Mode.IONIAN
+        assert window.view_selector.currentData() is ModeView.PARALLEL
+        assert window.view_selector.isEnabled() is False
+        assert window.scale_selector.currentText() == "Mixolydian"
+        assert window.selection_label.text() == "A Mixolydian"
+
+    def test_intervals_follow_modal_root(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.root_selector.setCurrentIndex(0)  # C
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        assert window.selection_label.text() == "D Intervals"
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_interval_result(
+            evaluate_intervals(board, PitchClass.D)
+        )
+
+    def test_triads_follow_modal_root(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["scale"].setChecked(False)
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.root_selector.setCurrentIndex(0)  # C
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_triad_result(
+            evaluate_triad(board, PitchClass.D, TriadQuality.MAJOR)
+        )
+
+    def test_mode_change_preserves_selections_and_layers(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["interval"].setChecked(True)
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.root_selector.setCurrentIndex(0)  # C
+        window.triad_quality_selector.setCurrentIndex(1)  # Minor
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        assert window.root_selector.currentText() == "C"
+        assert window.triad_quality_selector.currentText() == "Minor"
+        assert window.layer_checkboxes["scale"].isChecked() is True
+        assert window.layer_checkboxes["interval"].isChecked() is True
+        assert window.layer_checkboxes["triad"].isChecked() is True
+        board = window._instrument_state.fretboard
+        expected = render_scale_result(evaluate_scale(board, PitchClass.D, "dorian"))
+        expected += render_interval_result(evaluate_intervals(board, PitchClass.D))
+        expected += render_triad_result(evaluate_triad(board, PitchClass.D, TriadQuality.MINOR))
+        assert window.fretboard_widget.annotations == expected
+        assert window.selection_label.text() == (
+            "D Dorian of C Major · Intervals · Minor Triads"
+        )
+
+    def test_mode_change_resets_active_voicing_to_first(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.layer_checkboxes["triad"].setChecked(True)
+        window.next_voicing_button.click()
+        assert window.voicing_label.text().startswith("Voicing 2 /")
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.view_selector.setCurrentIndex(_view_index(ModeView.RELATIVE))
+        assert window.voicing_label.text().startswith("Voicing 1 /")
+        assert window._active_voicing_index == 0
+
+    def test_mode_survives_tuning_change(self, qapp: QApplication) -> None:
+        window = MainWindow()
+        window.mode_selector.setCurrentIndex(_mode_index("dorian"))
+        window.tuning_selector.setCurrentIndex(_tuning_index("drop_d"))
+        assert window.mode_selector.currentData() is Mode.DORIAN
+        board = window._instrument_state.fretboard
+        assert window.fretboard_widget.annotations == render_scale_result(
+            evaluate_scale(board, PitchClass.A, "dorian")
+        )
+        assert window.selection_label.text() == "A Dorian"
 
 
 class TestTriadQualitySelector:

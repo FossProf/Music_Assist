@@ -26,6 +26,7 @@ from guitar_app.core.instrument.tuning_presets import (
     NamedTuning,
     available_tunings,
 )
+from guitar_app.core.theory.mode import Mode, available_modes
 from guitar_app.core.theory.pitch import PitchClass
 from guitar_app.core.theory.scale_formulas import MINOR_PENTATONIC, NamedScaleFormula
 from guitar_app.core.theory.triad import TriadQuality
@@ -36,6 +37,12 @@ from guitar_app.services.instrument_state import (
     instrument_from_tuning_id,
 )
 from guitar_app.services.interval_service import evaluate_intervals
+from guitar_app.services.mode_service import (
+    ModeSelection,
+    ModeView,
+    available_mode_views,
+    evaluate_mode,
+)
 from guitar_app.services.scale_service import available_scale_formulas, evaluate_scale
 from guitar_app.services.triad_service import available_triad_qualities, evaluate_triad
 from guitar_app.ui.fretboard_widget import FretboardWidget
@@ -66,6 +73,16 @@ class MainWindow(QMainWindow):
     control order, and hands the combined immutable collection (plus the
     currently active voicing group) to the widget; it never constructs scale
     formulas or performs triad calculations itself.
+
+    A Mode selector (Ionian..Locrian) and a View selector (Parallel/Relative)
+    sit beside the existing controls. The default Ionian/Parallel selection is
+    the identity: the root and scale selectors drive evaluation exactly as
+    before. Selecting any other mode activates modal context: the scale
+    selector mirrors the mode's formula, and in the Relative view the effective
+    root becomes the derived modal root (the input root is treated as the
+    parent-major root). Leaving modal context restores the previously selected
+    scale; changing the scale while a mode is active drops back out of modal
+    context.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -75,12 +92,16 @@ class MainWindow(QMainWindow):
         self._scale_formulas: tuple[NamedScaleFormula, ...] = available_scale_formulas()
         self._triad_qualities: tuple[TriadQuality, ...] = available_triad_qualities()
         self._tunings: tuple[NamedTuning, ...] = available_tunings()
+        self._modes: tuple[Mode, ...] = available_modes()
+        self._mode_views: tuple[ModeView, ...] = available_mode_views()
         self._instrument_state: InstrumentState = DEFAULT_INSTRUMENT_STATE
 
         self.tuning_selector = QComboBox()
         self.root_selector = QComboBox()
         self.scale_selector = QComboBox()
         self.triad_quality_selector = QComboBox()
+        self.mode_selector = QComboBox()
+        self.view_selector = QComboBox()
         self.layer_checkboxes: dict[str, QCheckBox] = {
             control.id: QCheckBox(control.name) for control in LAYER_CONTROLS
         }
@@ -96,6 +117,7 @@ class MainWindow(QMainWindow):
         self._triad_groups: tuple[TriadVoicingRenderGroup, ...] = ()
         self._active_voicing_index = 0
         self._editor_synced_index = -1
+        self._scale_index_before_mode: int | None = None
         self._tuning_editor_open = False
 
         self._build_selectors()
@@ -114,12 +136,19 @@ class MainWindow(QMainWindow):
             self.scale_selector.addItem(named.name)
         for quality in self._triad_qualities:
             self.triad_quality_selector.addItem(quality.display_name)
+        for mode in self._modes:
+            self.mode_selector.addItem(mode.display_name, mode)
+        for view in self._mode_views:
+            self.view_selector.addItem(view.display_name, view)
         self.tuning_selector.setCurrentIndex(self._tunings.index(STANDARD_TUNING))
         self.root_selector.setCurrentIndex(self._pitch_classes.index(PitchClass.A))
         self.scale_selector.setCurrentIndex(self._scale_formulas.index(MINOR_PENTATONIC))
         self.triad_quality_selector.setCurrentIndex(self._triad_qualities.index(TriadQuality.MAJOR))
+        self.mode_selector.setCurrentIndex(self._modes.index(Mode.IONIAN))
+        self.view_selector.setCurrentIndex(self._mode_views.index(ModeView.PARALLEL))
         for control in LAYER_CONTROLS:
             self.layer_checkboxes[control.id].setChecked(control.default_enabled)
+        self._update_view_enabled()
 
     def _build_layout(self) -> None:
         selectors = QWidget()
@@ -134,6 +163,10 @@ class MainWindow(QMainWindow):
         selectors_layout.addWidget(self.scale_selector)
         selectors_layout.addWidget(QLabel("Quality:"))
         selectors_layout.addWidget(self.triad_quality_selector)
+        selectors_layout.addWidget(QLabel("Mode:"))
+        selectors_layout.addWidget(self.mode_selector)
+        selectors_layout.addWidget(QLabel("View:"))
+        selectors_layout.addWidget(self.view_selector)
         for control in LAYER_CONTROLS:
             selectors_layout.addWidget(self.layer_checkboxes[control.id])
         selectors_layout.addWidget(self.tuning_label)
@@ -160,6 +193,8 @@ class MainWindow(QMainWindow):
         self.root_selector.currentIndexChanged.connect(self._update_fretboard)
         self.scale_selector.currentIndexChanged.connect(self._update_fretboard)
         self.triad_quality_selector.currentIndexChanged.connect(self._update_fretboard)
+        self.mode_selector.currentIndexChanged.connect(self._on_mode_changed)
+        self.view_selector.currentIndexChanged.connect(self._update_fretboard)
         for control in LAYER_CONTROLS:
             self.layer_checkboxes[control.id].toggled.connect(self._update_fretboard)
         self.tuning_editor_button.clicked.connect(self._toggle_tuning_editor)
@@ -183,21 +218,40 @@ class MainWindow(QMainWindow):
             )
         self._sync_tuning_editor()
         fretboard = self._instrument_state.fretboard
-        named = self._scale_formulas[self.scale_selector.currentIndex()]
         root = self._pitch_classes[self.root_selector.currentIndex()]
+        named = self._scale_formulas[self.scale_selector.currentIndex()]
         quality = self._triad_qualities[self.triad_quality_selector.currentIndex()]
+        mode = self._active_mode()
+        if mode is not None and named.id != mode.id:
+            # The scale changed away from the active mode's formula: the user
+            # left modal context, so snap the mode/view selectors back to their
+            # identity defaults and keep their newly chosen scale.
+            self._leave_modal_context(keep_scale=True)
+            mode = self._active_mode()
+            named = self._scale_formulas[self.scale_selector.currentIndex()]
+        effective_root = root
+        modal_context: str | None = None
+        if mode is not None:
+            view = self.view_selector.currentData() or ModeView.PARALLEL
+            selection = evaluate_mode(root, mode, view)
+            effective_root = selection.modal_root
+            modal_context = self._modal_context_label(selection)
         try:
-            annotations, groups = self._enabled_layer_data(fretboard, root, named, quality)
+            annotations, groups = self._enabled_layer_data(
+                fretboard, effective_root, named, quality
+            )
         except (UnknownScaleFormulaError, InvalidScaleDegreeError) as exc:
             self.statusBar().showMessage(
-                f"Could not evaluate {root.spelling()} {named.name}: {exc}"
+                f"Could not evaluate {effective_root.spelling()} {named.name}: {exc}"
             )
             return
         self.statusBar().clearMessage()
         self.tuning_label.setText(
             f"Tuning: {self._instrument_state.display_name or self._instrument_state.tuning.name}"
         )
-        self.selection_label.setText(self._selection_label(root, named, quality))
+        self.selection_label.setText(
+            self._selection_label(effective_root, named, quality, modal_context)
+        )
         # Reset the active voicing only when the underlying triad result changed
         # (root, quality, or fretboard), so toggling layers preserves the user's
         # chosen voicing. While the triad layer is unchecked its result is not
@@ -281,18 +335,25 @@ class MainWindow(QMainWindow):
             self._update_fretboard()
 
     def _selection_label(
-        self, root: PitchClass, named: NamedScaleFormula, quality: TriadQuality
+        self,
+        root: PitchClass,
+        named: NamedScaleFormula,
+        quality: TriadQuality,
+        modal_context: str | None,
     ) -> str:
         """Describe the visible workspace: root, then the enabled layers.
 
-        Root is always shown because it defines interval context. A layer is
-        only named while it is enabled, so the label never describes hidden
-        content.
+        ``root`` is the effective root (the modal root while a mode is active,
+        otherwise the selector's root), because it defines the interval
+        context for everything on the board. ``modal_context`` (e.g. ``"Dorian
+        of C Major"``) replaces the plain scale name in the scale layer slot
+        when a mode is active. A layer is only named while it is enabled,
+        so the label never describes hidden content.
         """
         root_spelling = root.spelling()
         parts: list[str] = []
         if self.layer_checkboxes["scale"].isChecked():
-            parts.append(named.name)
+            parts.append(modal_context if modal_context is not None else named.name)
         if self.layer_checkboxes["interval"].isChecked():
             parts.append("Intervals")
         if self.layer_checkboxes["triad"].isChecked():
@@ -300,6 +361,76 @@ class MainWindow(QMainWindow):
         if not parts:
             return f"{root_spelling} — No layers"
         return f"{root_spelling} {' · '.join(parts)}"
+
+    def _active_mode(self) -> Mode | None:
+        """The active mode, or ``None`` for the identity Ionian selection.
+
+        Ionian is the inert default: it keeps the scale selector fully in
+        charge, which is what preserves the pre-mode behavior.
+        """
+        mode = self.mode_selector.currentData()
+        return None if mode is Mode.IONIAN else mode
+
+    def _modal_context_label(self, selection: ModeSelection) -> str:
+        """Describe the modal scale for the label's scale slot.
+
+        The label prefix already carries the modal root, so the context starts
+        at the mode name. Parallel: ``"Dorian"``. Relative: ``"Dorian of C
+        Major"`` (the input root is the parent-major root).
+        """
+        if selection.view is ModeView.RELATIVE:
+            return (
+                f"{selection.mode.display_name} of "
+                f"{selection.parent_major_root.spelling()} Major"
+            )
+        return selection.mode.display_name
+
+    def _on_mode_changed(self, *_args: object) -> None:
+        """Enter or leave modal context in response to the Mode selector.
+
+        Selecting a non-Ionian mode mirrors its formula into the scale
+        selector; returning to Ionian restores the previously selected scale
+        and resets the view to Parallel.
+        """
+        mode = self.mode_selector.currentData()
+        if mode is Mode.IONIAN:
+            self._leave_modal_context(keep_scale=False)
+        else:
+            self._enter_modal_context(mode)
+        self._update_fretboard()
+
+    def _enter_modal_context(self, mode: Mode) -> None:
+        """Activate ``mode``, mirroring its formula into the scale selector."""
+        if self._scale_index_before_mode is None:
+            self._scale_index_before_mode = self.scale_selector.currentIndex()
+        formula_index = next(
+            i for i, named in enumerate(self._scale_formulas) if named.id == mode.id
+        )
+        with QSignalBlocker(self.scale_selector):
+            self.scale_selector.setCurrentIndex(formula_index)
+        self._update_view_enabled()
+
+    def _leave_modal_context(self, keep_scale: bool) -> None:
+        """Deactivate modal context, snapping selectors to their defaults.
+
+        With ``keep_scale=False`` the scale selector is restored to the
+        selection it had before the mode was entered; with ``keep_scale=True``
+        (the user changed the scale themselves) the user's scale is kept. The
+        Mode selector returns to Ionian and the View selector to Parallel.
+        """
+        if not keep_scale and self._scale_index_before_mode is not None:
+            with QSignalBlocker(self.scale_selector):
+                self.scale_selector.setCurrentIndex(self._scale_index_before_mode)
+        self._scale_index_before_mode = None
+        with QSignalBlocker(self.mode_selector):
+            self.mode_selector.setCurrentIndex(self._modes.index(Mode.IONIAN))
+        with QSignalBlocker(self.view_selector):
+            self.view_selector.setCurrentIndex(self._mode_views.index(ModeView.PARALLEL))
+        self._update_view_enabled()
+
+    def _update_view_enabled(self) -> None:
+        """The View selector only applies while a non-Ionian mode is active."""
+        self.view_selector.setEnabled(self._active_mode() is not None)
 
     def _enabled_layer_data(
         self,
